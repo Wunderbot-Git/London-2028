@@ -28,9 +28,12 @@ export function startMock(seed) {
         const coll = q.from[0].collectionId;
         let rows = [...docs.entries()].filter(([p]) => p.startsWith(`${coll}/`) && !p.slice(coll.length + 1).includes("/"));
         const f = q.where?.fieldFilter;
-        if (f) rows = rows.filter(([, fields]) => JSON.stringify(fromValue(fields[f.field.fieldPath])) === JSON.stringify(fromValue(f.value)));
+        const value = (fields) => fromValue(fields[f.field.fieldPath]);
+        if (f?.op === "EQUAL") rows = rows.filter(([, fields]) => JSON.stringify(value(fields)) === JSON.stringify(fromValue(f.value)));
+        if (f?.op === "GREATER_THAN_OR_EQUAL") rows = rows.filter(([, fields]) => value(fields) != null && value(fields) >= fromValue(f.value));
         const o = q.orderBy?.[0];
-        if (o) rows.sort((a, b) => (fromValue(b[1][o.field.fieldPath]) ?? 0) - (fromValue(a[1][o.field.fieldPath]) ?? 0));
+        const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+        if (o) rows.sort((a, b) => cmp(fromValue(b[1][o.field.fieldPath]) ?? 0, fromValue(a[1][o.field.fieldPath]) ?? 0));
         rows = rows.slice(0, q.limit ?? rows.length);
         return send(200, rows.length ? rows.map(([p, fields]) => ({ document: { name: name(p), fields }, readTime: "t" })) : [{ readTime: "t" }]);
       }
@@ -39,6 +42,14 @@ export function startMock(seed) {
           const p = n.split("/documents/")[1];
           return docs.has(p) ? { found: { name: n, fields: docs.get(p) } } : { missing: n };
         }));
+      }
+      if (rest === ":commit") {
+        for (const w of body.writes) {
+          const p = w.update.name.split("/documents/")[1];
+          const mask = w.updateMask?.fieldPaths;
+          docs.set(p, mask ? { ...(docs.get(p) ?? {}), ...Object.fromEntries(mask.map((k) => [k, w.update.fields[k]])) } : w.update.fields);
+        }
+        return send(200, { commitTime: new Date().toISOString(), writeResults: body.writes.map(() => ({})) });
       }
       const p = rest.slice(1);
       if (req.method === "GET") return docs.has(p) ? send(200, { name: name(p), fields: docs.get(p) }) : send(404, { error: { code: 404, status: "NOT_FOUND" } });
@@ -51,6 +62,22 @@ export function startMock(seed) {
     }
 
     if (path === "/anthropic/v1/messages") {
+      const props = body.output_config?.format?.schema?.properties ?? {};
+      const reply = (answer) => send(200, { model: body.model, stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(answer) }] });
+      if (props.rules) {
+        // Profile derivation: a recognisable rule and the first six rated listings as examples.
+        const ids = [...body.messages[0].content.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
+        return reply({ rules: ["MOCK-REGEL"], fewShot: ids.slice(0, 6), suggestedHardFilters: { maxPriceMonthly: 7000, minBeds: null, maxCommuteMin: null }, summary: "Mock" });
+      }
+      if (props.scores) {
+        // Backtest: the candidate (with MOCK-REGEL) hits the family's mean; the old profile says 5.
+        const ids = [...body.messages[0].content.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
+        const mean = (id) => {
+          const s = ["philipp", "manuela"].map((r) => docs.get(`ratings/${id}_${r}`)).filter(Boolean).map((f) => fromFields(f).score).filter((x) => x != null);
+          return Math.round(s.reduce((a, b) => a + b, 0) / s.length);
+        };
+        return reply({ scores: ids.map((id) => ({ id, score: body.system.includes("MOCK-REGEL") ? mean(id) : 5 })) });
+      }
       const isExtraction = !!body.output_config?.format?.schema?.properties?.listings;
       const answer = isExtraction
         ? { listings: [{

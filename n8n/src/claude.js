@@ -127,10 +127,10 @@ export function describe(l) {
 }
 
 /**
- * Prediction request (spec §6.3): listing + current profile (rules, hard filters) + few-shot
- * examples with the family's ratings. Stable parts come first so prompt caching can reuse them.
+ * What the model knows when judging (spec §6.3): family, confirmed guard rails, profile rules and
+ * few-shot examples with the family's ratings. Shared by the prediction and the weekly backtest.
  */
-export function predictionRequest(listing, context, settings) {
+export function judgeSystem(context) {
   const profile = context.profile;
   const criteria = context.criteria ?? {};
   const hard = { ...criteria, ...(profile?.hardFilters ?? {}) };
@@ -143,7 +143,7 @@ export function predictionRequest(listing, context, settings) {
     .map((e, i) => `Beispiel ${i + 1} – Bewertung ${e.score}${e.tags?.length ? ` (Gründe: ${e.tags.join(", ")})` : ""}${e.notes?.length ? `; Notizen: ${e.notes.join(" / ")}` : ""}\n${describe(e.listing)}`)
     .join("\n\n");
 
-  const system = [
+  return [
     `Du schätzt ein, wie interessant ein Mietinserat für eine Familie ist. Skala: ${SCALE}.`,
     FAMILY,
     guard.length ? `Bestätigte Leitplanken: ${guard.join("; ")}.` : "Leitplanken (Budget, Zimmer, Schulweg) sind noch nicht festgelegt.",
@@ -151,9 +151,12 @@ export function predictionRequest(listing, context, settings) {
       ? `Gelernte Vorlieben (Profil v${profile.version}):\n- ${profile.rules.join("\n- ")}`
       : "Es gibt noch kein gelerntes Profil; urteile nach der Beschreibung der Familie.",
     examples ? `Bisher bewertete Inserate:\n\n${examples}` : null,
-    "Antworte mit score (1–5) und rationale: ein bis zwei kurze deutsche Sätze, die das Wichtigste dafür und dagegen nennen.",
   ].filter(Boolean).join("\n\n");
+}
 
+/** Prediction request for one new listing. Stable parts come first so prompt caching can reuse them. */
+export function predictionRequest(listing, context, settings) {
+  const system = `${judgeSystem(context)}\n\nAntworte mit score (1–5) und rationale: ein bis zwei kurze deutsche Sätze, die das Wichtigste dafür und dagegen nennen.`;
   return {
     model: settings.claudeModel,
     max_tokens: 8000,

@@ -1,7 +1,7 @@
 // Firestore REST (v1) value encoding. n8n talks to Firestore through HTTP Request nodes with a
 // Google service account, so documents travel as typed "fields" maps.
 
-const TIMESTAMP_KEYS = new Set(["firstSeenAt", "lastSeenAt", "createdAt", "computedAt"]);
+const TIMESTAMP_KEYS = new Set(["firstSeenAt", "lastSeenAt", "createdAt", "computedAt", "updatedAt"]);
 
 export function toValue(v, key) {
   if (v === null || v === undefined) return { nullValue: null };
@@ -55,4 +55,12 @@ export function queryDocs(body) {
   return (Array.isArray(body) ? body : [])
     .filter((r) => r.document)
     .map((r) => ({ id: docId(r.document.name), ...fromFields(r.document.fields) }));
+}
+
+/** documents:commit write that sets only the given fields of an existing or new document. */
+export function updateWrite(name, data, { merge = true } = {}) {
+  return {
+    update: { name, fields: toFields(data) },
+    ...(merge ? { updateMask: { fieldPaths: Object.keys(data) } } : {}),
+  };
 }
