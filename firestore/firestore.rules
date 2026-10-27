@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// London Wohn-Review – access rules (docs/spec.md §5.4, §7).
+//
+// - Only accounts listed in config/access may read anything:
+//     config/access = { raters: { "<google email, lowercase>": "philipp" | "manuela" } }
+//   That document is maintained by hand in the console; nobody can write it from the app.
+// - listings, batches, profiles and config are written by n8n with a service account
+//   (Admin SDK bypasses these rules). The app never writes them, except its own
+//   completed.<rater> mark on a batch.
+// - Each person writes only their own ratings: ratings/{listingId}_{rater}.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function access() {
+      return get(/databases/$(database)/documents/config/access).data.raters;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && email() in access();
+    }
+    function me() {
+      return access()[email()];
+    }
+
+    match /config/{doc} {
+      allow read: if signedIn();
+    }
+
+    match /listings/{id} {
+      allow read: if signedIn();
+    }
+
+    match /profiles/{version} {
+      allow read: if signedIn();
+    }
+
+    match /batches/{week} {
+      allow read: if signedIn();
+      // Only set one's own completion timestamp; nothing else on the batch may change.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed'])
+        && request.resource.data.completed.diff(resource.data.get('completed', {})).affectedKeys().hasOnly([me()])
+        && request.resource.data.completed[me()] == request.time;
+    }
+
+    match /ratings/{ratingId} {
+      // Both may read all ratings; the app shows the other person's only in the weekly summary.
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.rater == me()
+        && ratingId == request.resource.data.listingId + '_' + me()
+        && request.resource.data.keys().hasOnly(
+             ['listingId', 'rater', 'score', 'tags', 'note', 'predictionAtRating', 'createdAt'])
+        && (request.resource.data.score == null
+            || (request.resource.data.score is int
+                && request.resource.data.score >= 1 && request.resource.data.score <= 5))
+        && request.resource.data.tags is list && request.resource.data.tags.size() <= 8
+        && request.resource.data.note is string && request.resource.data.note.size() <= 2000
+        && request.resource.data.createdAt == request.time;
+    }
+  }
+}
