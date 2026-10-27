@@ -8,9 +8,10 @@ Dieses Repo enthält den Teil, der als Code gepflegt wird (Spec §4, Variante B)
 |---|---|
 | `web/` | Web-App für Philipp und Manuela (Review und Wochenabschluss), aufgebaut aus Prototyp v2; Deploy auf Cloud Run |
 | `firestore/` | Firestore-Sicherheitsregeln mit Tests gegen den Emulator |
+| `n8n/` | Workflow `london-ingest` (Alert-Mails → Firestore) mit getesteter Code-Node-Logik, siehe [`n8n/README.md`](n8n/README.md) |
 | `docs/` | Spezifikation |
 
-Die Datenbeschaffung (Alert-Mails → Parser → TfL → Prognose → Firestore) läuft in n8n und liegt nicht in diesem Repo.
+Die Datenbeschaffung (Alert-Mails → Parser → TfL → Prognose → Firestore) läuft in n8n; der Workflow wird hier als JSON gebaut und in n8n importiert.
 
 ## Web-App lokal starten
 
@@ -41,7 +42,7 @@ Alles andere (`listings`, `batches`, `profiles`, `config`) schreibt n8n mit eine
 
 - `batches/{week}`: Dokument-ID = ISO-Woche wie `2026-W45`, Felder `week` (gleicher Wert), `listingIds`, `createdAt`, `completed: {}`. Die App nimmt den Stapel mit der höchsten `week`.
 - `listings/{listingId}`: `prediction.score` muss gesetzt sein, sonst zeigt die Karte „noch keine Prognose“. `commute` mit `walkMin`, `transitMin`, `transitSummary` (z. B. „Bus 65“), `driveMin`. Optional `highlight` als Freitext für „Besonderheit“ (steht nicht im Datenmodell der Spec, wird aber in Prototyp und Karte gebraucht).
-- Bekannte `flags` mit deutschem Text: `term_too_short`, `over_budget`, `few_beds`, `periodic_risk`. Andere Flags erscheinen unverändert.
+- Bekannte `flags` mit deutschem Text: `term_too_short`, `over_budget`, `few_beds`, `periodic_risk`, `too_far`, `commute_approx`. Andere Flags erscheinen unverändert.
 
 **Zugang:** Die Allowlist liegt in `config/access` und wird von Hand in der Firebase-Konsole gepflegt:
 
@@ -83,7 +84,7 @@ Die Firebase-Web-Konfiguration ist kein Geheimnis; sie wird zur Laufzeit von `we
 
 ## Noch nicht gebaut
 
-- n8n-Workflows `london-ingest` und `london-weekly` (Spec §5.3)
+- n8n-Workflow `london-weekly` (Spec §5.3)
 - Benachrichtigungen (offener Punkt 7)
 - Echte Fotos statt Farbkachel (offener Punkt 9)
 - Spätere Ansichten: Karte, Favoriten, Vergleich, Prognosegüte im Zeitverlauf (Spec §5.5)

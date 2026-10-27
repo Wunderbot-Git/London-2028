@@ -60,6 +60,8 @@ const FLAG_LABEL: Record<string, string> = {
   over_budget: "Über Budget",
   few_beds: "Zu wenige Schlafzimmer",
   periodic_risk: "Reguläre Miete: Vermieter sucht wohl Langzeitmieter",
+  too_far: "Schulweg länger als vereinbart",
+  commute_approx: "Schulweg grob geschätzt (nur Postcode-Bezirk bekannt)",
 };
 export const flagLabel = (f: string) => FLAG_LABEL[f] ?? f;
 
