@@ -1,0 +1,14 @@
+{
+  "name": "london-ingest",
+  "private": true,
+  "type": "module",
+  "description": "n8n workflow london-ingest (siehe docs/spec.md §5.3): Code-Node-Logik, Tests und Build des Workflow-JSON",
+  "scripts": {
+    "test": "vitest run",
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}
