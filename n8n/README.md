@@ -18,7 +18,7 @@ npm run build     # schreibt london-ingest.json und london-weekly.json
 
 | Spec | Node(s) | Was passiert |
 |---|---|---|
-| 1 | Gmail Trigger | alle 15 Min.; Mails von Rightmove, Zoopla, OpenRent oder mit Label `london-agenturen` |
+| 1 | Every 15 minutes, List mails, Pick new mails, Get mail | alle 15 Min. das AgentMail-Postfach `london@agentmail.to` abfragen (Mails der letzten 7 Tage ohne Label `london-processed`) und jede neue Mail vollständig abrufen. Gibt es nichts Neues, endet der Lauf hier, ohne Firestore oder Claude zu berühren |
 | – | Settings, Load profile, Fetch context, Context | einmal pro Lauf: `config/criteria`, neuestes `profiles`-Dokument, Few-Shot-Inserate mit beiden Bewertungen |
 | 2–3 | Parse alert mails | Portal am Absender erkennen, Inserate an den Links erkennen (auch hinter Tracking-Links), Preis, Zimmer, Adresse, Mietform usw. per Muster lesen |
 | 4 | Needs Claude? → Claude extract | nur wenn der Parser nichts oder Unvollständiges findet, und immer bei Agentur-Mails. Claude liefert festes JSON (Structured Outputs). Scheitert der Aufruf, bleiben die vollständig geparsten Inserate erhalten und der Fehler steht in der Ausführung |
@@ -28,6 +28,7 @@ npm run build     # schreibt london-ingest.json und london-weekly.json
 | 8 | Build prediction request, Claude predict | Profilregeln, harte Filter und Few-Shot-Beispiele → `{ score, rationale }`. Ohne Antwort wird das Inserat trotzdem gespeichert (`prediction: null`, `predictionError`) |
 | 9 | Save listing | `listings/{id}` in Firestore |
 | 10 | Hunt phase and score ≥ 4? → Notify | nur wenn `config/criteria.phase == "hunt"`. Der Kanal ist noch offen (Spec §8 Punkt 7); der Node ist ein Platzhalter |
+| – | Mark mails processed | setzt in AgentMail das Label `london-processed`. Läuft erst, wenn alle Inserate des Laufs gespeichert sind; bricht vorher etwas ab, bleiben die Mails unmarkiert und werden beim nächsten Lauf erneut verarbeitet (Speichern ist idempotent) |
 
 TfL plant keine Autofahrten, deshalb bleibt `commute.driveMin` leer.
 
@@ -55,13 +56,13 @@ Ein zweiter Lauf in derselben Woche baut keinen zweiten Stapel und rechnet kein 
 
    | Name im Workflow | Typ | Inhalt |
    |---|---|---|
-   | Gmail Agent-Konto | Gmail OAuth2 | das separate Agent-Postfach (offener Punkt 4) |
+   | AgentMail | Header Auth | Name `Authorization`, Wert `Bearer <AgentMail-API-Key>` |
    | Firestore Service Account | Google Service Account | Service-Account mit Rolle *Cloud Datastore User*; „Set up for use in HTTP Request node“ an, Scope `https://www.googleapis.com/auth/datastore` |
    | Anthropic API key | Header Auth | Name `x-api-key`, Wert = API-Key |
    | TfL app_key | Query Auth | Name `app_key`, Wert = Key von api-portal.tfl.gov.uk |
 
 4. In Firestore `config/criteria` anlegen, mindestens `{ "phase": "calibrate" }`. Sobald die offenen Punkte 1–3 entschieden sind: `maxPriceMonthly`, `minBeds`, `maxCommuteMin`. Ab Phase 2 `phase` auf `"hunt"` setzen.
-5. Agentur-Newsletter im Agent-Postfach per Filter mit dem Label `london-agenturen` versehen.
+5. Im Node **Settings** steht `agentmailInbox: "london@agentmail.to"`. Das Postfach ist nur für die Suche da: Jede Mail, die nicht von Rightmove, Zoopla oder OpenRent kommt, gilt als Agentur-Mail und geht an Claude. Bestätigungsmails der Portale („Alert bestätigen“) einmal in der AgentMail-Konsole öffnen und den Link klicken; der Workflow findet darin keine Inserate und markiert sie nur. AgentMail filtert Spam: Die Liste schließt Spam aus, also in den ersten Tagen in der Konsole prüfen, ob Portal-Mails dort landen.
 6. Beide Workflows aktivieren.
 
 ## Claude

@@ -184,7 +184,7 @@ export function isComplete(l) {
   return l.price != null && l.beds != null && (l.address != null || l.postcode != null) && l.url != null;
 }
 
-/** Full parse of one Gmail message (n8n Gmail Trigger with "simplify" off). */
+/** Full parse of one alert mail ({ id, from, subject, date, html, text }, see agentmail.js). */
 export function parseMail(mail) {
   const from = mail.from?.value?.[0]?.address ?? mail.from?.text ?? String(mail.from ?? "");
   const source = sourceForSender(from);

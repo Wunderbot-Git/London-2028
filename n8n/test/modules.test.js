@@ -150,3 +150,25 @@ describe("listingDoc", () => {
     expect(listingDoc({ id: "b", duplicateOf: "a" }, {}, now).doc.status).toBe("archived");
   });
 });
+
+import { PROCESSED_LABEL, newMessageIds, toMail } from "../src/agentmail.js";
+import { parseMail } from "../src/parse.js";
+describe("agentmail", () => {
+  it("lists unprocessed messages oldest first", () => {
+    const body = { count: 3, messages: [
+      { message_id: "b", timestamp: "2026-11-08T10:00:00Z", labels: ["received"] },
+      { message_id: "a", timestamp: "2026-11-08T09:00:00Z", labels: ["received"] },
+      { message_id: "c", timestamp: "2026-11-08T08:00:00Z", labels: ["received", PROCESSED_LABEL] },
+    ] };
+    expect(newMessageIds(body)).toEqual(["a", "b"]);
+    expect(newMessageIds({})).toEqual([]);
+  });
+  it("feeds the parser with the sender string", () => {
+    const mail = toMail({ message_id: "m1", from: "Zoopla <alerts@email.zoopla.co.uk>", subject: "New", timestamp: "2026-11-08T10:00:00Z", html: '<a href="https://www.zoopla.co.uk/to-rent/details/73843699/">£4,080 pcm</a> 3 bed, Forge Lane, Petersham' });
+    const parsed = parseMail(mail);
+    expect(parsed).toMatchObject({ messageId: "m1", source: "zoopla", from: "Zoopla <alerts@email.zoopla.co.uk>" });
+    expect(parsed.listings[0]).toMatchObject({ sourceId: "73843699", price: 4080, beds: 3 });
+    expect(sourceForSenderCheck("Lettings Ltd <news@example-lettings.co.uk>")).toBe("agency:example-lettings.co.uk");
+  });
+});
+import { sourceForSender as sourceForSenderCheck } from "../src/parse.js";

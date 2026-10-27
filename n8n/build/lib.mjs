@@ -24,7 +24,7 @@ const code = (libs, body) =>
 export const GOOGLE = { googleApi: { id: "", name: "Firestore Service Account" } };
 export const ANTHROPIC = { httpHeaderAuth: { id: "", name: "Anthropic API key" } };
 export const TFL = { httpQueryAuth: { id: "", name: "TfL app_key" } };
-export const GMAIL = { gmailOAuth2: { id: "", name: "Gmail Agent-Konto" } };
+export const AGENTMAIL = { httpHeaderAuth: { id: "", name: "AgentMail" } };
 
 export const FIRESTORE = "=https://firestore.googleapis.com/v1/projects/{{ $('Settings').first().json.projectId }}/databases/(default)/documents";
 
