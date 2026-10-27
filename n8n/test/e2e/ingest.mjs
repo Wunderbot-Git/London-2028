@@ -1,19 +1,12 @@
-// End-to-end run of london-ingest in a real n8n against mock-server.mjs.
-//   N8N_BIN=/path/to/node_modules/n8n/bin/n8n node test/e2e/run.mjs
-// Needs n8n installed separately (Node 24+); not part of `npm test`.
-// The Gmail trigger is replaced by the fixture mails, all API hosts point at the mock, and
-// credentials are dropped. Everything else – nodes, expressions, Code – runs as built.
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// End-to-end run of london-ingest in a real n8n against mock-server.mjs (see harness.mjs).
+//   N8N_BIN=/path/to/node_modules/n8n/bin/n8n node test/e2e/ingest.mjs
+// The Gmail trigger is replaced by the fixture mails.
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
+import { loadWorkflow, n8nHome, replaceWithCode, replaceWithProbe, startManually } from "./harness.mjs";
 import { startMock } from "./mock-server.mjs";
 import { fingerprint } from "../../src/normalize.js";
 
-const n8n = process.env.N8N_BIN;
-if (!n8n) throw new Error("Set N8N_BIN to n8n's bin/n8n");
 const fixture = (n) => readFileSync(new URL(`../fixtures/${n}.html`, import.meta.url), "utf8");
 
 const mock = await startMock({
@@ -34,55 +27,14 @@ const mails = [
   ["agency", "news@example-lettings.co.uk"],
 ].map(([n, from], i) => ({ id: `msg-${n}`, from: { value: [{ address: from }] }, subject: `Alert ${n}`, date: "2026-11-08", html: fixture(n), i }));
 
-let text = readFileSync(new URL("../../london-ingest.json", import.meta.url), "utf8")
-  .replaceAll("https://firestore.googleapis.com", `${mock.url}/firestore`)
-  .replaceAll("https://api.anthropic.com", `${mock.url}/anthropic`)
-  .replaceAll("https://api.tfl.gov.uk", `${mock.url}/tfl`)
-  .replaceAll("https://api.postcodes.io", `${mock.url}/postcodes`)
-  .replace("DEIN-GCP-PROJEKT", "test");
-const wf = JSON.parse(text);
-wf.id = "LondonIngestE2E";
-wf.active = false;
-for (const n of wf.nodes) {
-  delete n.credentials;
-  if (n.type === "n8n-nodes-base.httpRequest") {
-    delete n.parameters.authentication;
-    delete n.parameters.nodeCredentialType;
-    delete n.parameters.genericAuthType;
-  }
-}
-const gmail = wf.nodes.find((n) => n.name === "Gmail Trigger");
-Object.assign(gmail, {
-  type: "n8n-nodes-base.code",
-  typeVersion: 2,
-  parameters: { jsCode: `return ${JSON.stringify(mails)}.map((json) => ({ json }));` },
-});
-// The notification placeholder becomes a call to the mock so the test can see who got through.
-Object.assign(wf.nodes.find((n) => n.name === "Notify (channel open)"), {
-  type: "n8n-nodes-base.httpRequest",
-  typeVersion: 4.2,
-  parameters: { method: "POST", url: `${mock.url}/notify`, sendBody: true, specifyBody: "json", jsonBody: "={{ JSON.stringify({ name: $json.name }) }}", options: {} },
-});
-wf.nodes.push({ id: "start", name: "Start", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [-220, 0], parameters: {} });
-wf.connections.Start = { main: [[{ node: "Gmail Trigger", type: "main", index: 0 }]] };
-
-const home = mkdtempSync(join(tmpdir(), "n8n-e2e-"));
-const file = join(home, "wf.json");
-writeFileSync(file, JSON.stringify(wf));
-const env = { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.0.1,localhost", N8N_USER_FOLDER: home, N8N_RUNNERS_ENABLED: "true", N8N_DIAGNOSTICS_ENABLED: "false", DB_SQLITE_POOL_SIZE: "1" };
-// Async on purpose: the mock server lives in this process and must keep answering.
-const run = async (...args) => {
-  try {
-    return (await promisify(execFile)(process.execPath, [n8n, ...args], { env, maxBuffer: 1 << 28 })).stdout;
-  } catch (e) {
-    console.error(`n8n ${args[0]} failed:\n${e.stdout?.slice(-3000)}\n${e.stderr?.slice(-3000)}`);
-    throw new Error(`n8n ${args[0]} failed`);
-  }
-};
+const wf = loadWorkflow("london-ingest.json", mock.url);
+replaceWithCode(wf, "Gmail Trigger", `return ${JSON.stringify(mails)}.map((json) => ({ json }));`);
+replaceWithProbe(wf, "Notify (channel open)", mock.url, "/notify");
+startManually(wf, "Gmail Trigger");
+const run = n8nHome();
 
 try {
-  await run("import:workflow", `--input=${file}`);
-  const out = await run("execute", "--id=LondonIngestE2E", "--rawOutput");
+  const out = await run(wf, "LondonIngestE2E");
 
   if (process.env.E2E_DEBUG) console.log(mock.calls.map((c) => `${c.method} ${c.path}`).join("\n"), out.slice(-6000));
   const l = (id) => mock.doc(`listings/${id}`);

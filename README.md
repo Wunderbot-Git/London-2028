@@ -8,10 +8,10 @@ Dieses Repo enthält den Teil, der als Code gepflegt wird (Spec §4, Variante B)
 |---|---|
 | `web/` | Web-App für Philipp und Manuela (Review und Wochenabschluss), aufgebaut aus Prototyp v2; Deploy auf Cloud Run |
 | `firestore/` | Firestore-Sicherheitsregeln mit Tests gegen den Emulator |
-| `n8n/` | Workflow `london-ingest` (Alert-Mails → Firestore) mit getesteter Code-Node-Logik, siehe [`n8n/README.md`](n8n/README.md) |
+| `n8n/` | Workflows `london-ingest` (Alert-Mails → Firestore) und `london-weekly` (Wochenstapel, Kennzahlen, Profil-Update) mit getesteter Code-Node-Logik, siehe [`n8n/README.md`](n8n/README.md) |
 | `docs/` | Spezifikation |
 
-Die Datenbeschaffung (Alert-Mails → Parser → TfL → Prognose → Firestore) läuft in n8n; der Workflow wird hier als JSON gebaut und in n8n importiert.
+Datenbeschaffung und Lernschleife laufen in n8n; die Workflows werden hier als JSON gebaut und in n8n importiert.
 
 ## Web-App lokal starten
 
@@ -84,7 +84,6 @@ Die Firebase-Web-Konfiguration ist kein Geheimnis; sie wird zur Laufzeit von `we
 
 ## Noch nicht gebaut
 
-- n8n-Workflow `london-weekly` (Spec §5.3)
 - Benachrichtigungen (offener Punkt 7)
 - Echte Fotos statt Farbkachel (offener Punkt 9)
 - Spätere Ansichten: Karte, Favoriten, Vergleich, Prognosegüte im Zeitverlauf (Spec §5.5)
