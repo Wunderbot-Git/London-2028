@@ -16,6 +16,7 @@ export function loadWorkflow(file, mockUrl) {
     .replaceAll("https://api.anthropic.com", `${mockUrl}/anthropic`)
     .replaceAll("https://api.tfl.gov.uk", `${mockUrl}/tfl`)
     .replaceAll("https://api.postcodes.io", `${mockUrl}/postcodes`)
+    .replaceAll("https://api.agentmail.to", `${mockUrl}/agentmail`)
     .replace("DEIN-GCP-PROJEKT", "test");
   const wf = JSON.parse(text);
   wf.active = false;

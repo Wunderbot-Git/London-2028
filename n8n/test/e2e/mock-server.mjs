@@ -3,7 +3,7 @@
 import { createServer } from "node:http";
 import { fromFields, toFields, fromValue } from "../../src/firestore.js";
 
-export function startMock(seed) {
+export function startMock(seed, { mails = [] } = {}) {
   const docs = new Map(Object.entries(seed).map(([path, data]) => [path, toFields(data)]));
   const calls = [];
   const prefix = "/firestore/v1/projects/test/databases/(default)/documents";
@@ -101,6 +101,23 @@ export function startMock(seed) {
     if (path.startsWith("/postcodes/outcodes/")) return send(200, { status: 200, result: { outcode: path.split("/").pop(), latitude: 51.45, longitude: -0.29 } });
 
     if (path === "/notify") return send(200, { ok: true });
+
+    // AgentMail: list, get and label messages of one inbox
+    const inbox = /^\/agentmail\/v0\/inboxes\/([^/]+)\/messages(?:\/([^/]+))?$/.exec(path);
+    if (inbox) {
+      if (req.headers.authorization !== undefined && !/^Bearer /.test(req.headers.authorization)) return send(401, {});
+      const [, , id] = inbox;
+      if (!id && req.method === "GET") {
+        return send(200, { count: mails.length, messages: mails.map(({ html, text, ...item }) => item) });
+      }
+      const m = mails.find((x) => x.message_id === id);
+      if (!m) return send(404, { name: "NotFoundError" });
+      if (req.method === "GET") return send(200, m);
+      if (req.method === "PATCH") {
+        m.labels = [...new Set([...m.labels, ...(body.add_labels ?? [])])];
+        return send(200, m);
+      }
+    }
 
     send(404, { error: `no mock for ${req.method} ${path}` });
   });

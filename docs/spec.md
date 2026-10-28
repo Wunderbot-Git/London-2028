@@ -55,7 +55,7 @@ Gesucht wird ein möbliertes Haus oder eine Wohnung für die Familie (2 Erwachse
 Portale (Rightmove, Zoopla, OpenRent, Agenturen)
         │  Suchalerts per E-Mail
         ▼
-Agent-Mailkonto (Gmail, separat)
+Agent-Postfach (AgentMail, london@agentmail.to)
         │
         ▼
 n8n (self-hosted) ──► TfL Journey Planner API (Schulweg)
@@ -76,8 +76,8 @@ Firestore (GCP)  ◄──►  Web-App (Cloud Run): Review-Oberfläche für Phil
 
 ## 5. Komponenten
 
-### 5.1 Agent-Mailkonto
-- Eigenes Gmail-Konto ausschließlich für die Suche, z. B. `london-wohnen…@gmail.com`
+### 5.1 Agent-Postfach
+- AgentMail-Postfach `london@agentmail.to`, ausschließlich für die Suche (statt eines Gmail-Kontos; n8n fragt es per API ab)
 - Empfängt alle Suchalerts und Agentur-Newsletter
 - Später optional Absender für Anfragen (Entwürfe, kein automatischer Versand)
 
@@ -96,7 +96,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 
 | # | Node | Aufgabe |
 |---|---|---|
-| 1 | Gmail-Trigger (Agent-Konto) | neue Mails von Portal-Absendern |
+| 1 | Abfrage des AgentMail-Postfachs (alle 15 Min.) | neue, noch nicht verarbeitete Mails |
 | 2 | Router nach Absender | ein Zweig pro Portal |
 | 3 | Parser (Code-Node je Portal) | Inserate aus dem Mail-HTML ziehen: URL, Quelle, Quell-ID, Titel/Adresse, Postcode, Preis, Zimmer, Bild-URL, Schlagworte |
 | 4 | LLM-Fallback | wenn der Parser scheitert oder Felder fehlen: Extraktion per Claude in festes JSON-Schema |
@@ -141,7 +141,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | status | enum | `new` \| `queued` \| `reviewed` \| `archived` |
 | reviewWeek | string? | z. B. `2026-W45` |
 | firstSeenAt, lastSeenAt | timestamp | |
-| rawMessageId | string | Gmail-Message-ID zur Nachverfolgung |
+| rawMessageId | string | AgentMail-Message-ID zur Nachverfolgung |
 
 **`ratings/{listingId}_{rater}`**
 
@@ -232,7 +232,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | 1 | Budget pro Monat (Start-Leitplanke) | Philipp & Manuela |
 | 2 | Mindestzahl Schlafzimmer | Philipp & Manuela |
 | 3 | Maximaler Schulweg, mit oder ohne Auto in London | Philipp & Manuela |
-| 4 | Agent-Mailkonto angelegt? Adresse? | Philipp |
+| 4 | ~~Agent-Mailkonto angelegt? Adresse?~~ Erledigt: `london@agentmail.to` (AgentMail) | Philipp |
 | 5 | n8n von außen per HTTPS erreichbar? MCP-Zugang aktivierbar? | Philipp |
 | 6 | GCP-Projekt: neu oder bestehendes? | Philipp |
 | 7 | Benachrichtigungskanal für Phase 2 und „Review bereit“ (Push der Web-App, Mail, WhatsApp) | offen |

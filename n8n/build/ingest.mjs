@@ -1,39 +1,56 @@
-// london-ingest (spec §5.3): alert mails → listings in Firestore.
-import { ANTHROPIC, CLAUDE_HEADERS, FIRESTORE, GMAIL, GOOGLE, TFL, workflowBuilder } from "./lib.mjs";
+// london-ingest (spec §5.3): alert mails in the AgentMail inbox → listings in Firestore.
+import { AGENTMAIL, ANTHROPIC, CLAUDE_HEADERS, FIRESTORE, GOOGLE, TFL, workflowBuilder } from "./lib.mjs";
 
 // Settings the user edits once after import.
 const SETTINGS = {
   projectId: "DEIN-GCP-PROJEKT",
   claudeModel: "claude-opus-5-5",
   schoolPostcode: "TW107AH",
+  agentmailInbox: "london@agentmail.to",
 };
+
+const INBOX = "https://api.agentmail.to/v0/inboxes/{{ encodeURIComponent($('Settings').first().json.agentmailInbox) }}/messages";
 
 export function ingest() {
   const { node, connect, chain, codeNode, http, finish } = workflowBuilder();
 
   // ---------------------------------------------------------------------------------------------
-  // 1 · Trigger and run context
+  // 1 · Poll the inbox; stop early when nothing is new
 
-  const trigger = node(
-    "Gmail Trigger",
-    "n8n-nodes-base.gmailTrigger",
-    1.2,
-    {
-      pollTimes: { item: [{ mode: "everyX", value: 15, unit: "minutes" }] },
-      simple: false,
-      filters: { q: "from:(rightmove.co.uk OR zoopla.co.uk OR openrent.co.uk) OR label:london-agenturen" },
-      options: {},
-    },
-    { credentials: GMAIL },
-  );
+  const trigger = node("Every 15 minutes", "n8n-nodes-base.scheduleTrigger", 1.2, {
+    rule: { interval: [{ field: "minutes", minutesInterval: 15 }] },
+  });
 
   const settings = node(
     "Settings",
     "n8n-nodes-base.set",
     3.4,
     { mode: "raw", jsonOutput: JSON.stringify(SETTINGS, null, 2), options: {} },
-    { executeOnce: true, notes: "Einmal nach dem Import anpassen: GCP-Projekt-ID und Claude-Modell." },
+    { executeOnce: true, notes: "Einmal nach dem Import anpassen: GCP-Projekt-ID. agentmailInbox ist das Postfach der Suchalerts." },
   );
+
+  // Last 7 days, so a few days of downtime lose nothing; processed mails carry a label.
+  const listMails = http("List mails", {
+    url: `=${INBOX}`,
+    query: [
+      { name: "limit", value: "100" },
+      { name: "after", value: "={{ $now.minus({ days: 7 }).toUTC().toISO() }}" },
+    ],
+    credentials: AGENTMAIL,
+    auth: "generic",
+  });
+
+  const pickMails = codeNode("Pick new mails", ["agentmail"], `
+  const r = $input.first().json;
+  if (r.statusCode !== 200) throw new Error(\`AgentMail list: \${r.statusCode} \${JSON.stringify(r.body).slice(0, 300)}\`);
+  return newMessageIds(r.body).map((messageId) => ({ json: { messageId } }));
+  `);
+
+  const getMail = http("Get mail", {
+    url: `=${INBOX}/{{ encodeURIComponent($json.messageId) }}`,
+    credentials: AGENTMAIL,
+    auth: "generic",
+  });
 
   const loadProfile = http(
     "Load profile",
@@ -71,13 +88,17 @@ export function ingest() {
   return [{ json: { criteria, examples, profile: plan.profile } }];
   `);
 
-  chain(trigger, settings, loadProfile, planContext, fetchContext, context);
+  chain(trigger, settings, listMails, pickMails, getMail, loadProfile, planContext, fetchContext, context);
 
   // ---------------------------------------------------------------------------------------------
   // 2 · Parse mails, Claude fallback for what the parser cannot read
 
-  const parse = codeNode("Parse alert mails", ["parse"], `
-  return $('Gmail Trigger').all().map((item) => ({ json: parseMail(item.json) }));
+  const parse = codeNode("Parse alert mails", ["agentmail", "parse"], `
+  return $('Get mail').all().map((item) => {
+    const r = item.json;
+    if (r.statusCode !== 200) throw new Error(\`AgentMail get: \${r.statusCode} \${JSON.stringify(r.body).slice(0, 300)}\`);
+    return { json: parseMail(toMail(r.body)) };
+  });
   `);
 
   const needsClaude = node("Needs Claude?", "n8n-nodes-base.if", 2.2, {
@@ -132,6 +153,18 @@ export function ingest() {
   `);
 
   chain(context, parse, needsClaude);
+
+  // Label the mails as processed. This branch sits below the main path, so with execution order
+  // v1 it runs only after every listing of the run is saved; if anything fails, the mails stay
+  // unlabelled and the next poll tries again (saving is idempotent).
+  const markMails = http("Mark mails processed", {
+    method: "PATCH",
+    url: `=${INBOX}/{{ encodeURIComponent($json.messageId) }}`,
+    body: '={{ JSON.stringify({ add_labels: ["london-processed"] }) }}',
+    credentials: AGENTMAIL,
+    auth: "generic",
+  });
+  connect(parse, markMails);
   connect(needsClaude, buildExtraction, 0);
   connect(needsClaude, useParser, 1);
   chain(buildExtraction, claudeExtract, readExtraction);
@@ -368,15 +401,16 @@ export function ingest() {
   // Layout: left to right along the main path, branches below.
 
   const layout = {
-    "Gmail Trigger": [0, 0], Settings: [220, 0], "Load profile": [440, 0], "Plan context fetch": [660, 0],
-    "Fetch context": [880, 0], Context: [1100, 0], "Parse alert mails": [1320, 0], "Needs Claude?": [1540, 0],
-    "Build extraction request": [1760, -160], "Claude extract": [1980, -160], "Read extraction": [2200, -160],
-    "Use parser results": [1980, 120], "Normalize listings": [2420, 0], "Lookup by id": [2640, 0],
-    "Find duplicate": [2860, 0], Classify: [3080, 0], "Route by kind": [3300, 0],
-    Geocode: [3520, -200], "Plan commute": [3740, -200], "TfL walking": [3960, -200], "TfL transit": [4180, -200],
-    "Build prediction request": [4400, -200], "Claude predict": [4620, -200], "Build listing doc": [4840, -200],
-    "Build duplicate doc": [4840, 40], "Touch lastSeenAt": [3520, 260],
-    "Save listing": [5060, -80], "Hunt phase and score ≥ 4?": [5280, -80], "Notify (channel open)": [5500, -160],
+    "Every 15 minutes": [0, 0], Settings: [220, 0], "List mails": [440, 0], "Pick new mails": [660, 0], "Get mail": [880, 0],
+    "Mark mails processed": [1980, 480], "Load profile": [1100, 0], "Plan context fetch": [1320, 0],
+    "Fetch context": [1540, 0], Context: [1760, 0], "Parse alert mails": [1980, 0], "Needs Claude?": [2200, 0],
+    "Build extraction request": [2420, -160], "Claude extract": [2640, -160], "Read extraction": [2860, -160],
+    "Use parser results": [2640, 120], "Normalize listings": [3080, 0], "Lookup by id": [3300, 0],
+    "Find duplicate": [3520, 0], Classify: [3740, 0], "Route by kind": [3960, 0],
+    Geocode: [4180, -200], "Plan commute": [4400, -200], "TfL walking": [4620, -200], "TfL transit": [4840, -200],
+    "Build prediction request": [5060, -200], "Claude predict": [5280, -200], "Build listing doc": [5500, -200],
+    "Build duplicate doc": [5500, 40], "Touch lastSeenAt": [4180, 260],
+    "Save listing": [5720, -80], "Hunt phase and score ≥ 4?": [5940, -80], "Notify (channel open)": [6160, -160],
   };
 
   return finish("london-ingest", layout);
