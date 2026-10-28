@@ -1,7 +1,7 @@
 // Turns portal alert mails into listing candidates (spec §5.3, nodes 2–3).
 // No HTML library is available in n8n Code nodes, so the mail is flattened to text with
 // [[LINK:url]] and [[IMG:src]] markers and each listing is read from the text after its link.
-// Anything incomplete is marked for the Claude fallback instead of being guessed.
+// Anything incomplete is marked for the Gemini fallback instead of being guessed.
 
 export const PORTALS = [
   { source: "rightmove", sender: /rightmove\.co\.uk/i, id: /rightmove\.co\.uk\/properties\/(\d{6,})/i },
@@ -179,7 +179,7 @@ export function readBlock(block) {
   return out;
 }
 
-/** True when the parser found enough to skip the Claude fallback (spec §5.3 node 4). */
+/** True when the parser found enough to skip the Gemini fallback (spec §5.3 node 4). */
 export function isComplete(l) {
   return l.price != null && l.beds != null && (l.address != null || l.postcode != null) && l.url != null;
 }

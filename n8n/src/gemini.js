@@ -1,6 +1,7 @@
-// Claude API requests (spec §5.3 nodes 4 and 8, §6.3). n8n sends them with an HTTP Request node,
-// so this builds plain Messages API bodies and reads the answers.
-// Both calls use structured outputs (output_config.format), so the text block is valid JSON.
+// Gemini API requests (spec §5.3 nodes 4 and 8, §6.3). n8n sends them with an HTTP Request node
+// to models/{model}:generateContent, so this builds plain request bodies and reads the answers.
+// Every call uses structured output (responseMimeType + responseJsonSchema), so the answer text is
+// valid JSON. The model is part of the URL, not the body (see build/lib.mjs).
 
 const nullable = (type, extra = {}) => ({ type: [type, "null"], ...extra });
 
@@ -18,7 +19,8 @@ export const EXTRACTION_SCHEMA = {
           postcode: nullable("string"),
           area: nullable("string"),
           price: nullable("number"),
-          pricePeriod: nullable("string", { enum: ["month", "week", null] }),
+          // "unknown" instead of null: enums with null are not reliably supported; readExtraction maps it back.
+          pricePeriod: { type: "string", enum: ["month", "week", "unknown"] },
           billsIncluded: nullable("boolean"),
           letType: { type: "string", enum: ["short_let", "flexible", "periodic", "corporate", "licence", "unknown"] },
           minTermMonths: nullable("integer"),
@@ -64,39 +66,63 @@ The email text marks links as [[LINK:url]] and images as [[IMG:src]].
 Return every distinct property the email advertises. Use null for anything the email does not state; never guess.
 - url: the link that opens the listing (prefer the portal listing URL over tracking links if both appear).
 - sourceId: the portal's numeric listing ID if visible in the URL, else null.
-- price/pricePeriod: the rent as stated, with "week" for pw/per week and "month" for pcm/per month.
+- price/pricePeriod: the rent as stated, with "week" for pw/per week, "month" for pcm/per month, "unknown" if no period is stated.
 - letType: short_let, flexible, periodic (ordinary long let), corporate, licence, or unknown.
 - availableFrom: ISO date (YYYY-MM-DD); "available now" means today's date, given below.
 - highlight: one short German phrase for the most notable feature (e.g. "Garten nach Süden"), or null.
 - photos: image URLs that belong to the listing (no logos or icons).`;
 
-export function extractionRequest(mail, settings, today = new Date()) {
-  const text = mail.text.length > MAX_MAIL_CHARS ? mail.text.slice(0, MAX_MAIL_CHARS) : mail.text;
+/**
+ * generateContent body. thinkingLevel low/medium/high works on Gemini 3.x and 4 models;
+ * maxOutputTokens includes the thinking tokens, so the limits leave room for them.
+ */
+export function geminiRequest({ system, user, schema, thinkingLevel, maxOutputTokens }) {
   return {
-    model: settings.claudeModel,
-    max_tokens: 16000,
-    fallbacks: "default",
-    output_config: { effort: "low", format: { type: "json_schema", schema: EXTRACTION_SCHEMA } },
-    system: EXTRACTION_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Today: ${today.toISOString().slice(0, 10)}\nFrom: ${mail.from}\nSubject: ${mail.subject}\n\n${text}`,
-      },
-    ],
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts: [{ text: user }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: schema,
+      maxOutputTokens,
+      thinkingConfig: { thinkingLevel },
+    },
   };
 }
 
-/** Parses a structured-output answer. Throws with a readable reason when there is none. */
-export function readJson(body) {
-  if (!body || body.type === "error" || body.error) {
-    throw new Error(`Claude API error: ${body?.error?.message ?? JSON.stringify(body).slice(0, 300)}`);
+export function extractionRequest(mail, today = new Date()) {
+  const text = mail.text.length > MAX_MAIL_CHARS ? mail.text.slice(0, MAX_MAIL_CHARS) : mail.text;
+  return geminiRequest({
+    system: EXTRACTION_SYSTEM,
+    user: `Today: ${today.toISOString().slice(0, 10)}\nFrom: ${mail.from}\nSubject: ${mail.subject}\n\n${text}`,
+    schema: EXTRACTION_SCHEMA,
+    thinkingLevel: "low",
+    maxOutputTokens: 16384,
+  });
+}
+
+/** Text of a generateContent answer (thought parts skipped). Throws with a readable reason when there is none. */
+export function readText(body) {
+  if (!body || body.error) {
+    throw new Error(`Gemini API error: ${body?.error?.message ?? JSON.stringify(body).slice(0, 300)}`);
   }
-  if (body.stop_reason === "refusal") throw new Error(`Claude declined (${body.stop_details?.category ?? "no category"})`);
-  if (body.stop_reason === "max_tokens") throw new Error("Claude answer was cut off at max_tokens");
-  const text = (body.content ?? []).find((b) => b.type === "text")?.text;
-  if (!text) throw new Error("Claude answer has no text block");
-  return JSON.parse(text);
+  if (body.promptFeedback?.blockReason) throw new Error(`Gemini blocked the request (${body.promptFeedback.blockReason})`);
+  const candidate = body.candidates?.[0];
+  if (!candidate) throw new Error("Gemini answer has no candidate");
+  if (candidate.finishReason === "MAX_TOKENS") throw new Error("Gemini answer was cut off at maxOutputTokens");
+  if (candidate.finishReason && candidate.finishReason !== "STOP") throw new Error(`Gemini stopped early (${candidate.finishReason})`);
+  const text = (candidate.content?.parts ?? []).filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("");
+  if (!text) throw new Error("Gemini answer has no text");
+  return text;
+}
+
+/** Parses a structured-output answer. */
+export function readJson(body) {
+  return JSON.parse(readText(body));
+}
+
+/** Extraction answer → listings in the parser's shape (pricePeriod "unknown" back to null). */
+export function readExtraction(body) {
+  return readJson(body).listings.map((l) => ({ ...l, pricePeriod: l.pricePeriod === "unknown" ? null : l.pricePeriod }));
 }
 
 const FAMILY = `Die Familie (2 Erwachsene, 2 Kinder) sucht für 6 Monate ab Januar 2028 ein möbliertes Haus oder eine Wohnung in London.
@@ -154,28 +180,25 @@ export function judgeSystem(context) {
   ].filter(Boolean).join("\n\n");
 }
 
-/** Prediction request for one new listing. Stable parts come first so prompt caching can reuse them. */
-export function predictionRequest(listing, context, settings) {
-  const system = `${judgeSystem(context)}\n\nAntworte mit score (1–5) und rationale: ein bis zwei kurze deutsche Sätze, die das Wichtigste dafür und dagegen nennen.`;
-  return {
-    model: settings.claudeModel,
-    max_tokens: 8000,
-    fallbacks: "default",
-    cache_control: { type: "ephemeral" },
-    output_config: { effort: "medium", format: { type: "json_schema", schema: PREDICTION_SCHEMA } },
-    system,
-    messages: [{ role: "user", content: `Neues Inserat:\n${describe(listing)}` }],
-  };
+/** Prediction request for one new listing. The system part comes first and stays stable, so Gemini's implicit caching can reuse it. */
+export function predictionRequest(listing, context) {
+  return geminiRequest({
+    system: `${judgeSystem(context)}\n\nAntworte mit score (1–5) und rationale: ein bis zwei kurze deutsche Sätze, die das Wichtigste dafür und dagegen nennen.`,
+    user: `Neues Inserat:\n${describe(listing)}`,
+    schema: PREDICTION_SCHEMA,
+    thinkingLevel: "medium",
+    maxOutputTokens: 8192,
+  });
 }
 
-/** Prediction map of spec §5.4, or null when Claude gave no usable answer. */
+/** Prediction map of spec §5.4; throws when Gemini gave no usable answer. */
 export function readPrediction(body, profileVersion, now = new Date()) {
   const p = readJson(body);
   return {
     score: p.score,
     rationale: p.rationale,
     profileVersion: profileVersion ?? null,
-    model: body.model ?? null,
+    model: body.modelVersion ?? null,
     createdAt: now.toISOString(),
   };
 }

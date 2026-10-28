@@ -13,7 +13,7 @@ if (!n8n) throw new Error("Set N8N_BIN to n8n's bin/n8n");
 export function loadWorkflow(file, mockUrl) {
   const text = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8")
     .replaceAll("https://firestore.googleapis.com", `${mockUrl}/firestore`)
-    .replaceAll("https://api.anthropic.com", `${mockUrl}/anthropic`)
+    .replaceAll("https://generativelanguage.googleapis.com", `${mockUrl}/gemini`)
     .replaceAll("https://api.tfl.gov.uk", `${mockUrl}/tfl`)
     .replaceAll("https://api.postcodes.io", `${mockUrl}/postcodes`)
     .replaceAll("https://api.agentmail.to", `${mockUrl}/agentmail`)

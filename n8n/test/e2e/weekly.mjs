@@ -84,16 +84,16 @@ try {
   assert.equal(p2.suggestedHardFilters.maxPriceMonthly, 7000);
   assert.equal(p2.basedOnRatings, 20);
   assert.equal(p2.metrics.mae, 0);
-  const backtests = mock.calls.filter((c) => c.path === "/anthropic/v1/messages" && c.body.output_config.format.schema.properties.scores);
+  const backtests = mock.calls.filter((c) => c.path.startsWith("/gemini/") && c.body.generationConfig.responseJsonSchema.properties.scores);
   assert.equal(backtests.length, 2);
-  for (const b of backtests) assert.ok(!/^ID (r0|r1|r2|r3|r4|r5)$/m.test(b.body.messages[0].content), "few-shot ids excluded from backtest");
+  for (const b of backtests) assert.ok(!/^ID (r0|r1|r2|r3|r4|r5)$/m.test(b.body.contents[0].parts[0].text), "few-shot ids excluded from backtest");
 
   // Second run in the same week: nothing new
   const callsBefore = mock.calls.length;
   await run(wf, "LondonWeeklyE2E2");
   assert.deepEqual(mock.doc(`batches/${nextWeek}`).listingIds, batch.listingIds);
   assert.equal(mock.doc("profiles/3"), null);
-  assert.equal(mock.calls.slice(callsBefore).filter((c) => c.path === "/notify" || c.path.startsWith("/anthropic")).length, 0);
+  assert.equal(mock.calls.slice(callsBefore).filter((c) => c.path === "/notify" || c.path.startsWith("/gemini")).length, 0);
 
   console.log(`e2e ok – batch ${nextWeek} with ${batch.listingIds.length} listings, profile v2 adopted`);
 } finally {

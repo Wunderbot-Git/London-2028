@@ -1,4 +1,4 @@
-// In-memory stand-ins for Firestore REST, the Claude Messages API, TfL and postcodes.io,
+// In-memory stand-ins for Firestore REST, the Gemini generateContent API, TfL and postcodes.io,
 // just enough for test/e2e/run.mjs to execute london-ingest end to end.
 import { createServer } from "node:http";
 import { fromFields, toFields, fromValue } from "../../src/firestore.js";
@@ -61,33 +61,39 @@ export function startMock(seed, { mails = [] } = {}) {
       }
     }
 
-    if (path === "/anthropic/v1/messages") {
-      const props = body.output_config?.format?.schema?.properties ?? {};
-      const reply = (answer) => send(200, { model: body.model, stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(answer) }] });
+    const gemini = /^\/gemini\/v1beta\/models\/([^/:]+):generateContent$/.exec(path);
+    if (gemini) {
+      const props = body.generationConfig?.responseJsonSchema?.properties ?? {};
+      const system = body.systemInstruction?.parts?.[0]?.text ?? "";
+      const user = body.contents?.[0]?.parts?.[0]?.text ?? "";
+      // A thought part first, as Gemini may return one; readers must skip it.
+      const reply = (answer) => send(200, {
+        modelVersion: gemini[1],
+        candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: "Gedanke", thought: true }, { text: JSON.stringify(answer) }] } }],
+      });
       if (props.rules) {
         // Profile derivation: a recognisable rule and the first six rated listings as examples.
-        const ids = [...body.messages[0].content.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
+        const ids = [...user.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
         return reply({ rules: ["MOCK-REGEL"], fewShot: ids.slice(0, 6), suggestedHardFilters: { maxPriceMonthly: 7000, minBeds: null, maxCommuteMin: null }, summary: "Mock" });
       }
       if (props.scores) {
         // Backtest: the candidate (with MOCK-REGEL) hits the family's mean; the old profile says 5.
-        const ids = [...body.messages[0].content.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
+        const ids = [...user.matchAll(/^ID (\S+)$/gm)].map((m) => m[1]);
         const mean = (id) => {
           const s = ["philipp", "manuela"].map((r) => docs.get(`ratings/${id}_${r}`)).filter(Boolean).map((f) => fromFields(f).score).filter((x) => x != null);
           return Math.round(s.reduce((a, b) => a + b, 0) / s.length);
         };
-        return reply({ scores: ids.map((id) => ({ id, score: body.system.includes("MOCK-REGEL") ? mean(id) : 5 })) });
+        return reply({ scores: ids.map((id) => ({ id, score: system.includes("MOCK-REGEL") ? mean(id) : 5 })) });
       }
-      const isExtraction = !!body.output_config?.format?.schema?.properties?.listings;
-      const answer = isExtraction
-        ? { listings: [{
-            url: "https://www.example-lettings.co.uk/short-lets/ham-common-family-home", sourceId: null,
-            address: "Ham Common", postcode: "TW10", area: "Ham", price: 1450, pricePeriod: "week", billsIncluded: true,
-            letType: "short_let", minTermMonths: 6, maxTermMonths: 6, availableFrom: "2028-01-01", beds: 4, baths: null,
-            furnished: "furnished", garden: true, parking: null, epc: null, highlight: "Garten nach Süden", photos: [],
-          }] }
-        : { score: body.messages[0].content.includes("Compton Road") ? 2 : 4, rationale: "Mock-Begründung." };
-      return send(200, { model: body.model, stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }, { type: "text", text: JSON.stringify(answer) }] });
+      if (props.listings) {
+        return reply({ listings: [{
+          url: "https://www.example-lettings.co.uk/short-lets/ham-common-family-home", sourceId: null,
+          address: "Ham Common", postcode: "TW10", area: "Ham", price: 1450, pricePeriod: "week", billsIncluded: true,
+          letType: "short_let", minTermMonths: 6, maxTermMonths: 6, availableFrom: "2028-01-01", beds: 4, baths: null,
+          furnished: "furnished", garden: true, parking: null, epc: null, highlight: "Garten nach Süden", photos: [],
+        }] });
+      }
+      return reply({ score: user.includes("Compton Road") ? 2 : 4, rationale: "Mock-Begründung." });
     }
 
     if (path.startsWith("/tfl/Journey/JourneyResults/")) {

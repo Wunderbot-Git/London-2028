@@ -68,7 +68,7 @@ export function dateFromText(t, today = new Date()) {
   return null;
 }
 
-/** Parser output (texts) → the extraction shape the Claude fallback also returns. */
+/** Parser output (texts) → the extraction shape the Gemini fallback also returns. */
 export function fromParser(l, today) {
   const term = termFromText(l.letText);
   return {

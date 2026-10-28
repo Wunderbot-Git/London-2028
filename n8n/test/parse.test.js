@@ -64,13 +64,13 @@ describe("parseMail", () => {
     expect(m.listings[0]).toMatchObject({ sourceId: "2345678", price: 6200, beds: 3, billsIncluded: true, availableText: "1st January 2028" });
   });
 
-  it("sends agency newsletters to the Claude fallback", () => {
+  it("sends agency newsletters to the Gemini fallback", () => {
     const m = parseMail(mail("agency", "news@example-lettings.co.uk"));
     expect(m.source).toBe("agency:example-lettings.co.uk");
     expect(m.needsLlm).toBe(true);
   });
 
-  it("asks for Claude when a portal listing is incomplete", () => {
+  it("asks for Gemini when a portal listing is incomplete", () => {
     const html = '<p><a href="https://www.rightmove.co.uk/properties/90000001">Nice house</a></p>';
     const m = parseMail({ id: "x", from: { value: [{ address: "a@rightmove.co.uk" }] }, html });
     expect(isComplete(m.listings[0])).toBe(false);

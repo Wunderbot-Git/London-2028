@@ -49,10 +49,10 @@ try {
   assert.equal(l("zoopla-73843699").prediction.score, 4);
   assert.equal(l("zoopla-74426560").priceMonthly, 6864);
   assert.deepEqual(l("zoopla-74426560").flags, ["term_too_short"]);
-  // Claude fallback (agency newsletter)
+  // Gemini fallback (agency newsletter)
   const agency = mock.paths().find((p) => p.startsWith("listings/agency-"));
   assert.ok(agency, "agency listing saved");
-  assert.equal(mock.doc(agency).extractedBy, "claude");
+  assert.equal(mock.doc(agency).extractedBy, "gemini");
   assert.equal(mock.doc(agency).priceMonthly, 6283);
   // Duplicate across portals
   assert.equal(l("rightmove-90814923").duplicateOf, "openrent-1111111");
@@ -63,13 +63,16 @@ try {
   assert.equal(l("rightmove-90123456").prediction, undefined);
   // OpenRent
   assert.equal(l("openrent-2345678").availableFrom, "2028-01-01");
-  // Prediction prompt carried profile and few-shot example; Claude headers were sent
-  const predict = mock.calls.find((c) => c.path === "/anthropic/v1/messages" && !c.body.output_config.format.schema.properties.listings);
-  assert.match(predict.body.system, /Garten ist wichtig/);
-  assert.match(predict.body.system, /Beispiel 1 – Bewertung 4/);
-  assert.equal(predict.headers["anthropic-version"], "2026-10-21");
-  // Exactly one Claude extraction (only the agency mail needed it)
-  assert.equal(mock.calls.filter((c) => c.path === "/anthropic/v1/messages" && c.body.output_config.format.schema.properties.listings).length, 1);
+  // Prediction prompt carried profile and few-shot example; the model from Settings is in the URL
+  const geminiCalls = mock.calls.filter((c) => c.path.startsWith("/gemini/"));
+  assert.ok(geminiCalls.every((c) => c.path === "/gemini/v1beta/models/gemini-3.8-flash:generateContent"), "model from Settings");
+  const isExtraction = (c) => !!c.body.generationConfig.responseJsonSchema.properties.listings;
+  const predict = geminiCalls.find((c) => !isExtraction(c));
+  assert.match(predict.body.systemInstruction.parts[0].text, /Garten ist wichtig/);
+  assert.match(predict.body.systemInstruction.parts[0].text, /Beispiel 1 – Bewertung 4/);
+  assert.equal(predict.body.generationConfig.responseMimeType, "application/json");
+  // Exactly one Gemini extraction (only the agency mail needed it)
+  assert.equal(geminiCalls.filter(isExtraction).length, 1);
   // Hunt phase: every new, non-duplicate listing with score ≥ 4 is announced (mock scores 4)
   const notified = mock.calls.filter((c) => c.path === "/notify").map((c) => c.body.name.split("/").pop()).sort();
   assert.deepEqual(notified, [agency.split("/")[1], "openrent-2345678", "zoopla-73843699", "zoopla-74426560"].sort());
@@ -81,7 +84,7 @@ try {
   const lastSave = mock.calls.findLastIndex((c) => c.method === "PATCH" && c.path.includes("/documents/listings/"));
   assert.ok(mock.calls.indexOf(labelled[0]) > lastSave, "mails labelled only after all listings were saved");
 
-  // Second poll: nothing new, so no Firestore or Claude traffic
+  // Second poll: nothing new, so no Firestore or Gemini traffic
   const before = mock.calls.length;
   await run(wf, "LondonIngestE2E2");
   const later = mock.calls.slice(before).map((c) => c.path);

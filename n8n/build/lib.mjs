@@ -22,16 +22,14 @@ const code = (libs, body) =>
 
 // Credentials (names must exist in n8n; see n8n/README.md)
 export const GOOGLE = { googleApi: { id: "", name: "Firestore Service Account" } };
-export const ANTHROPIC = { httpHeaderAuth: { id: "", name: "Anthropic API key" } };
+export const GEMINI = { httpHeaderAuth: { id: "", name: "Gemini API key" } };
 export const TFL = { httpQueryAuth: { id: "", name: "TfL app_key" } };
 export const AGENTMAIL = { httpHeaderAuth: { id: "", name: "AgentMail" } };
 
 export const FIRESTORE = "=https://firestore.googleapis.com/v1/projects/{{ $('Settings').first().json.projectId }}/databases/(default)/documents";
 
-export const CLAUDE_HEADERS = [
-  { name: "anthropic-version", value: "2026-10-21" },
-  { name: "anthropic-beta", value: "server-side-fallback-2026-07-01" },
-];
+// Gemini generateContent; the model comes from the Settings node (geminiModel).
+export const GEMINI_URL = "=https://generativelanguage.googleapis.com/v1beta/models/{{ $('Settings').first().json.geminiModel }}:generateContent";
 
 /** IF node (v2.2) that passes items where the expression is true to output 0. */
 export const ifTrue = (id, expression) => ({

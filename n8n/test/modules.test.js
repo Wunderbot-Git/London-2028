@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { commute, commuteFlags, geocode, transitSummary } from "../src/commute.js";
 import { contextBatchGet, readContext } from "../src/context.js";
 import { equalityQuery, fromFields, queryDocs, toFields } from "../src/firestore.js";
-import { describe as describeListing, extractionRequest, predictionRequest, readJson, readPrediction } from "../src/claude.js";
+import { describe as describeListing, extractionRequest, predictionRequest, readExtraction, readJson, readPrediction } from "../src/gemini.js";
 import { dateFromText, fingerprint, nextMonday, splitPostcode, termFromText } from "../src/normalize.js";
 
 describe("normalize helpers", () => {
@@ -97,19 +97,23 @@ describe("context", () => {
   });
 });
 
-describe("claude", () => {
-  const settings = { claudeModel: "claude-opus-5-5" };
+describe("gemini", () => {
   const listing = {
     address: "Forge Lane", area: "Petersham", postcode: "TW10", priceMonthly: 4080, letType: "periodic",
     beds: 3, baths: 2, furnished: "either", garden: true, parking: true,
     commute: { walkMin: 5, transitMin: null }, flags: ["periodic_risk"],
   };
+  const answer = (text, extra = {}) => ({ modelVersion: "gemini-3.8-flash", candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: "…", thought: true }, { text }] } }], ...extra });
 
   it("builds an extraction request with a JSON schema", () => {
-    const r = extractionRequest({ from: "a@b.c", subject: "S", text: "T" }, settings, new Date("2026-11-08T00:00:00Z"));
-    expect(r.model).toBe("claude-opus-5-5");
-    expect(r.output_config.format.type).toBe("json_schema");
-    expect(r.messages[0].content).toContain("Today: 2026-11-08");
+    const r = extractionRequest({ from: "a@b.c", subject: "S", text: "T" }, new Date("2026-11-08T00:00:00Z"));
+    expect(r.model).toBeUndefined(); // the model is part of the URL
+    expect(r.generationConfig.responseMimeType).toBe("application/json");
+    expect(r.generationConfig.responseJsonSchema.properties.listings).toBeDefined();
+    expect(r.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" });
+    expect(r.systemInstruction.parts[0].text).toContain("rental listings");
+    expect(r.contents[0]).toMatchObject({ role: "user" });
+    expect(r.contents[0].parts[0].text).toContain("Today: 2026-11-08");
   });
 
   it("puts profile rules, guard rails and examples into the prediction prompt", () => {
@@ -117,22 +121,30 @@ describe("claude", () => {
       criteria: { maxPriceMonthly: 7000 },
       profile: { version: 2, rules: ["Garten zählt viel"], hardFilters: { minBeds: 3 } },
       examples: [{ listing, score: 4.5, tags: ["Lage"], notes: [] }],
-    }, settings);
-    expect(r.system).toContain("Budget bis £7000 pcm; mindestens 3 Schlafzimmer");
-    expect(r.system).toContain("Gelernte Vorlieben (Profil v2)");
-    expect(r.system).toContain("Beispiel 1 – Bewertung 4.5 (Gründe: Lage)");
-    expect(r.messages[0].content).toContain("Schulweg zur DSL: 5 Min. zu Fuß");
+    });
+    const system = r.systemInstruction.parts[0].text;
+    expect(system).toContain("Budget bis £7000 pcm; mindestens 3 Schlafzimmer");
+    expect(system).toContain("Gelernte Vorlieben (Profil v2)");
+    expect(system).toContain("Beispiel 1 – Bewertung 4.5 (Gründe: Lage)");
+    expect(r.contents[0].parts[0].text).toContain("Schulweg zur DSL: 5 Min. zu Fuß");
+    expect(r.generationConfig.thinkingConfig.thinkingLevel).toBe("medium");
     expect(describeListing(listing)).toContain("Garten: ja; Parkplatz: ja");
   });
 
-  it("reads answers and refuses bad ones loudly", () => {
-    const ok = { model: "claude-opus-5-5", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }, { type: "text", text: '{"score":4,"rationale":"Gut."}' }] };
-    expect(readPrediction(ok, 2, new Date("2026-11-08T00:00:00Z"))).toEqual({
-      score: 4, rationale: "Gut.", profileVersion: 2, model: "claude-opus-5-5", createdAt: "2026-11-08T00:00:00.000Z",
+  it("reads answers, skips thought parts and refuses bad ones loudly", () => {
+    expect(readPrediction(answer('{"score":4,"rationale":"Gut."}'), 2, new Date("2026-11-08T00:00:00Z"))).toEqual({
+      score: 4, rationale: "Gut.", profileVersion: 2, model: "gemini-3.8-flash", createdAt: "2026-11-08T00:00:00.000Z",
     });
-    expect(() => readJson({ stop_reason: "refusal", content: [] })).toThrow(/declined/);
-    expect(() => readJson({ type: "error", error: { message: "overloaded" } })).toThrow(/overloaded/);
-    expect(() => readJson({ stop_reason: "max_tokens", content: [] })).toThrow(/max_tokens/);
+    expect(() => readJson({ promptFeedback: { blockReason: "SAFETY" } })).toThrow(/blocked.*SAFETY/);
+    expect(() => readJson({ error: { code: 503, message: "overloaded", status: "UNAVAILABLE" } })).toThrow(/overloaded/);
+    expect(() => readJson({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [] } }] })).toThrow(/maxOutputTokens/);
+    expect(() => readJson({ candidates: [{ finishReason: "SAFETY" }] })).toThrow(/stopped early \(SAFETY\)/);
+    expect(() => readJson({ candidates: [] })).toThrow(/no candidate/);
+  });
+
+  it("maps an unknown price period back to null", () => {
+    const listings = readExtraction(answer(JSON.stringify({ listings: [{ price: 1000, pricePeriod: "unknown" }, { price: 250, pricePeriod: "week" }] })));
+    expect(listings.map((l) => l.pricePeriod)).toEqual([null, "week"]);
   });
 });
 

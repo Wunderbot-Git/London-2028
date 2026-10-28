@@ -3,11 +3,11 @@
 //      metrics (§6.4) and the phase-2 check (§3);
 //   2. notify both that the review is ready (channel still open, §8 point 7);
 //   3. derive a new profile from all ratings and keep it only if the backtest improves (§6.3).
-import { ANTHROPIC, CLAUDE_HEADERS, FIRESTORE, GOOGLE, ifTrue, workflowBuilder } from "./lib.mjs";
+import { FIRESTORE, GEMINI, GEMINI_URL, GOOGLE, ifTrue, workflowBuilder } from "./lib.mjs";
 
 const SETTINGS = {
   projectId: "DEIN-GCP-PROJEKT",
-  claudeModel: "claude-opus-5-5",
+  geminiModel: "gemini-3.8-flash",
   batchSize: 12,
 };
 
@@ -68,7 +68,7 @@ export function weekly() {
   // -------------------------------------------------------------------------------------------
   // 1 · Batch, settle last week, metrics, phase check
 
-  const compose = codeNode("Compose batch", ["firestore", "weekly", "claude", "profile"], `
+  const compose = codeNode("Compose batch", ["firestore", "weekly", "gemini", "profile"], `
     const s = $('Settings').first().json;
     const now = new Date();
     const docs = (name) => queryDocs($(name).first().json.body);
@@ -129,7 +129,7 @@ export function weekly() {
       profile,
       criteria,
       rated: update ? rated : [],
-      derivationRequest: update ? derivationRequest(rated, profile, criteria, s) : null,
+      derivationRequest: update ? derivationRequest(rated, profile, criteria) : null,
     } }];
   `);
 
@@ -162,34 +162,31 @@ export function weekly() {
   // 3 · Profile update
 
   const update = node("Update profile?", "n8n-nodes-base.if", 2.2, ifTrue("update-profile", "$('Compose batch').first().json.updateProfile"));
-  const derive = http("Claude derive profile", {
+  const derive = http("Gemini derive profile", {
     method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
+    url: GEMINI_URL,
     body: "={{ JSON.stringify($('Compose batch').first().json.derivationRequest) }}",
-    headers: CLAUDE_HEADERS,
-    credentials: ANTHROPIC,
+    credentials: GEMINI,
     auth: "generic",
   });
-  const planBacktest = codeNode("Plan backtest", ["weekly", "claude", "profile"], `
-    const s = $('Settings').first().json;
+  const planBacktest = codeNode("Plan backtest", ["weekly", "gemini", "profile"], `
     const { rated, profile, criteria } = $('Compose batch').first().json;
     const candidate = readCandidate($input.first().json.body, rated, profile);
     const sample = backtestSample(rated, [...(profile?.fewShot ?? []), ...candidate.fewShot]);
     const context = (p) => ({ profile: p, criteria, examples: examplesFor(p?.fewShot, rated) });
     return [
-      { json: { which: 'current', request: backtestRequest(sample, context(profile), s) } },
-      { json: { which: 'candidate', request: backtestRequest(sample, context(candidate), s) } },
+      { json: { which: 'current', request: backtestRequest(sample, context(profile)) } },
+      { json: { which: 'candidate', request: backtestRequest(sample, context(candidate)) } },
     ].map((item) => ({ json: { ...item.json, candidate, sampleIds: sample.map((x) => x.id) } }));
   `);
-  const backtest = http("Claude backtest", {
+  const backtest = http("Gemini backtest", {
     method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
+    url: GEMINI_URL,
     body: "={{ JSON.stringify($json.request) }}",
-    headers: CLAUDE_HEADERS,
-    credentials: ANTHROPIC,
+    credentials: GEMINI,
     auth: "generic",
   });
-  const decideNode = codeNode("Decide profile", ["firestore", "weekly", "claude", "profile"], `
+  const decideNode = codeNode("Decide profile", ["firestore", "weekly", "gemini", "profile"], `
     const s = $('Settings').first().json;
     const { rated } = $('Compose batch').first().json;
     const metrics = {};
@@ -240,8 +237,8 @@ export function weekly() {
     "Load ratings": [880, 0], "Load candidates": [1100, 0], "Load last 7 days": [1320, 0],
     "Plan listing fetch": [1540, 0], "Fetch listings": [1760, 0], "Compose batch": [1980, 0],
     "Save batch": [2200, 0], "Check save": [2420, 0], "New batch?": [2640, 0], "Notify review ready": [2860, -120],
-    "Update profile?": [3080, 0], "Claude derive profile": [3300, -120], "Plan backtest": [3520, -120],
-    "Claude backtest": [3740, -120], "Decide profile": [3960, -120], "Adopt?": [4180, -120],
+    "Update profile?": [3080, 0], "Gemini derive profile": [3300, -120], "Plan backtest": [3520, -120],
+    "Gemini backtest": [3740, -120], "Decide profile": [3960, -120], "Adopt?": [4180, -120],
     "Save profile": [4400, -200], "Check profile save": [4620, -200],
   });
 }

@@ -1,7 +1,7 @@
-// Weekly profile update (spec §6.3): Claude derives rules and few-shot examples from all
+// Weekly profile update (spec §6.3): Gemini derives rules and few-shot examples from all
 // ratings; the new profile replaces the old one only if it predicts the past ratings better.
 // Hard filters are never set automatically, only suggested.
-import { describe, judgeSystem, readJson } from "./claude.js";
+import { describe, geminiRequest, judgeSystem, readJson } from "./gemini.js";
 import { combined } from "./weekly.js";
 
 export const MIN_RATINGS = 15;
@@ -50,7 +50,7 @@ const rater = (r) =>
       : `${r.score}${r.tags?.length ? ` (${r.tags.join(", ")})` : ""}${r.note ? ` – „${r.note}“` : ""}`
     : "nicht bewertet";
 
-export function derivationRequest(rated, profile, criteria, settings) {
+export function derivationRequest(rated, profile, criteria) {
   const blocks = rated
     .map((x) =>
       [
@@ -69,17 +69,16 @@ Deine Aufgabe jetzt: Leite aus allen Bewertungen der Familie ein neues Präferen
 - fewShot: 6 bis 10 IDs besonders aussagekräftiger Bewertungen, über die ganze Skala verteilt.
 - suggestedHardFilters: nur wo die Bewertungen eine klare Grenze zeigen, sonst null. Das ist ein Vorschlag; die Familie bestätigt ihn selbst.
 - summary: zwei, drei Sätze, was sich gegenüber dem bisherigen Profil ändert.`;
-  return {
-    model: settings.claudeModel,
-    max_tokens: 16000,
-    fallbacks: "default",
-    output_config: { effort: "high", format: { type: "json_schema", schema: DERIVATION_SCHEMA } },
+  return geminiRequest({
     system,
-    messages: [{ role: "user", content: `Bewertete Inserate (${rated.length}):\n\n${blocks}` }],
-  };
+    user: `Bewertete Inserate (${rated.length}):\n\n${blocks}`,
+    schema: DERIVATION_SCHEMA,
+    thinkingLevel: "high",
+    maxOutputTokens: 32768,
+  });
 }
 
-/** Claude's answer → candidate profile document (spec §5.4 `profiles/{version}`). */
+/** Gemini's answer → candidate profile document (spec §5.4 `profiles/{version}`). */
 export function readCandidate(body, rated, profile, now = new Date()) {
   const d = readJson(body);
   const ids = new Set(rated.map((x) => x.id));
@@ -137,15 +136,14 @@ export const BACKTEST_SCHEMA = {
 };
 
 /** One request scores the whole sample with a given profile (same system prompt as ingest). */
-export function backtestRequest(sample, context, settings) {
-  return {
-    model: settings.claudeModel,
-    max_tokens: 16000,
-    fallbacks: "default",
-    output_config: { effort: "medium", format: { type: "json_schema", schema: BACKTEST_SCHEMA } },
+export function backtestRequest(sample, context) {
+  return geminiRequest({
     system: `${judgeSystem(context)}\n\nBewerte jedes der folgenden Inserate unabhängig voneinander. Antworte mit einem score je ID.`,
-    messages: [{ role: "user", content: sample.map((x) => `ID ${x.id}\n${describe(x.listing)}`).join("\n\n") }],
-  };
+    user: sample.map((x) => `ID ${x.id}\n${describe(x.listing)}`).join("\n\n"),
+    schema: BACKTEST_SCHEMA,
+    thinkingLevel: "medium",
+    maxOutputTokens: 32768,
+  });
 }
 
 /** Backtest answer → { n, mae, hitRateWithin1 } against the family's mean score. */

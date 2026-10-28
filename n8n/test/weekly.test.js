@@ -5,7 +5,7 @@ import { updateWrite } from "../src/firestore.js";
 
 const L = (id, score, extra = {}) => ({ id, prediction: score == null ? null : { score }, postcode: "TW10 7", priceMonthly: 5000, flags: [], ...extra });
 const R = (listingId, rater, score, extra = {}) => ({ listingId, rater, score, tags: [], note: "", predictionAtRating: 3, createdAt: "2026-11-10T10:00:00Z", ...extra });
-const answer = (obj) => ({ model: "m", stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(obj) }] });
+const answer = (obj) => ({ modelVersion: "m", candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(obj) }] } }] });
 
 describe("weeks", () => {
   it("names the review week after a Sunday run", () => {
@@ -82,12 +82,14 @@ describe("profile update", () => {
     expect(shouldUpdate({ basedOnRatings: 20 }, 21)).toBe(true);
   });
 
-  it("asks Claude with every rating, including tags", () => {
-    const r = derivationRequest(rated, null, {}, { claudeModel: "claude-opus-5-5" });
-    expect(r.messages[0].content).toContain("Bewertete Inserate (20)");
-    expect(r.messages[0].content).toContain("ID l1\n");
-    expect(r.messages[0].content).toContain("Philipp: 2 (Lage)");
-    expect(r.output_config.effort).toBe("high");
+  it("asks Gemini with every rating, including tags", () => {
+    const r = derivationRequest(rated, null, {});
+    const user = r.contents[0].parts[0].text;
+    expect(user).toContain("Bewertete Inserate (20)");
+    expect(user).toContain("ID l1\n");
+    expect(user).toContain("Philipp: 2 (Lage)");
+    expect(r.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
+    expect(r.generationConfig.responseJsonSchema.properties.rules).toBeDefined();
   });
 
   it("keeps confirmed hard filters and drops unknown few-shot ids", () => {
@@ -100,8 +102,8 @@ describe("profile update", () => {
   it("backtests on recent listings outside both example sets and adopts only on lower MAE", () => {
     const sample = backtestSample(rated, ["l19", "l0"], 5);
     expect(sample.map((x) => x.id)).toEqual(["l18", "l17", "l16", "l15", "l14"]);
-    const req = backtestRequest(sample, { profile: null, examples: examplesFor(["l1"], rated) }, { claudeModel: "m" });
-    expect(req.system).toContain("Beispiel 1 – Bewertung 2");
+    const req = backtestRequest(sample, { profile: null, examples: examplesFor(["l1"], rated) });
+    expect(req.systemInstruction.parts[0].text).toContain("Beispiel 1 – Bewertung 2");
     const exact = readBacktest(answer({ scores: sample.map((x) => ({ id: x.id, score: x.combined })) }), sample);
     const off = readBacktest(answer({ scores: sample.map((x) => ({ id: x.id, score: x.combined > 3 ? 1 : 5 })) }), sample);
     expect(exact).toEqual({ n: 5, mae: 0, hitRateWithin1: 1 });

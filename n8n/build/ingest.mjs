@@ -1,10 +1,10 @@
 // london-ingest (spec §5.3): alert mails in the AgentMail inbox → listings in Firestore.
-import { AGENTMAIL, ANTHROPIC, CLAUDE_HEADERS, FIRESTORE, GOOGLE, TFL, workflowBuilder } from "./lib.mjs";
+import { AGENTMAIL, FIRESTORE, GEMINI, GEMINI_URL, GOOGLE, TFL, workflowBuilder } from "./lib.mjs";
 
 // Settings the user edits once after import.
 const SETTINGS = {
   projectId: "DEIN-GCP-PROJEKT",
-  claudeModel: "claude-opus-5-5",
+  geminiModel: "gemini-3.8-flash",
   schoolPostcode: "TW107AH",
   agentmailInbox: "london@agentmail.to",
 };
@@ -91,7 +91,7 @@ export function ingest() {
   chain(trigger, settings, listMails, pickMails, getMail, loadProfile, planContext, fetchContext, context);
 
   // ---------------------------------------------------------------------------------------------
-  // 2 · Parse mails, Claude fallback for what the parser cannot read
+  // 2 · Parse mails, Gemini fallback for what the parser cannot read
 
   const parse = codeNode("Parse alert mails", ["agentmail", "parse"], `
   return $('Get mail').all().map((item) => {
@@ -101,7 +101,7 @@ export function ingest() {
   });
   `);
 
-  const needsClaude = node("Needs Claude?", "n8n-nodes-base.if", 2.2, {
+  const needsGemini = node("Needs Gemini?", "n8n-nodes-base.if", 2.2, {
     conditions: {
       options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 },
       conditions: [
@@ -117,26 +117,23 @@ export function ingest() {
     options: {},
   });
 
-  const buildExtraction = codeNode("Build extraction request", ["claude"], `
-  const s = $('Settings').first().json;
-  return $input.all().map((item) => ({ json: { ...item.json, claudeRequest: extractionRequest(item.json, s) } }));
+  const buildExtraction = codeNode("Build extraction request", ["gemini"], `
+  return $input.all().map((item) => ({ json: { ...item.json, geminiRequest: extractionRequest(item.json) } }));
   `);
 
-  const claudeExtract = http("Claude extract", {
+  const geminiExtract = http("Gemini extract", {
     method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
-    body: "={{ JSON.stringify($json.claudeRequest) }}",
-    headers: CLAUDE_HEADERS,
-    credentials: ANTHROPIC,
+    url: GEMINI_URL,
+    body: "={{ JSON.stringify($json.geminiRequest) }}",
+    credentials: GEMINI,
     auth: "generic",
   });
 
-  const readExtraction = codeNode("Read extraction", ["parse", "normalize", "claude"], `
+  const readExtraction = codeNode("Read extraction", ["parse", "normalize", "gemini"], `
   return $input.all().map((item, i) => {
-    const { claudeRequest, text, ...mail } = $('Build extraction request').itemMatching(i).json;
+    const { geminiRequest, text, ...mail } = $('Build extraction request').itemMatching(i).json;
     try {
-      const out = readJson(item.json.body);
-      return { json: { ...mail, extracted: out.listings, extractedBy: 'claude' } };
+      return { json: { ...mail, extracted: readExtraction(item.json.body), extractedBy: 'gemini' } };
     } catch (e) {
       // Keep what the parser read completely; the error stays visible in the execution.
       const extracted = mail.listings.filter(isComplete).map((l) => fromParser(l));
@@ -152,7 +149,7 @@ export function ingest() {
   });
   `);
 
-  chain(context, parse, needsClaude);
+  chain(context, parse, needsGemini);
 
   // Label the mails as processed. This branch sits below the main path, so with execution order
   // v1 it runs only after every listing of the run is saved; if anything fails, the mails stay
@@ -165,9 +162,9 @@ export function ingest() {
     auth: "generic",
   });
   connect(parse, markMails);
-  connect(needsClaude, buildExtraction, 0);
-  connect(needsClaude, useParser, 1);
-  chain(buildExtraction, claudeExtract, readExtraction);
+  connect(needsGemini, buildExtraction, 0);
+  connect(needsGemini, useParser, 1);
+  chain(buildExtraction, geminiExtract, readExtraction);
 
   // ---------------------------------------------------------------------------------------------
   // 3 · Normalise and deduplicate
@@ -268,7 +265,7 @@ export function ingest() {
   connect(route, touch, 2);
 
   // ---------------------------------------------------------------------------------------------
-  // 5 · Duplicate of a listing from another portal: stored archived, no TfL/Claude calls
+  // 5 · Duplicate of a listing from another portal: stored archived, no TfL/Gemini calls
 
   const buildDup = codeNode("Build duplicate doc", ["firestore", "doc"], `
   return $input.all().map((item) => {
@@ -310,28 +307,26 @@ export function ingest() {
     auth: "generic",
   });
 
-  const predictRequest = codeNode("Build prediction request", ["normalize", "commute", "claude"], `
-  const s = $('Settings').first().json;
+  const predictRequest = codeNode("Build prediction request", ["normalize", "commute", "gemini"], `
   const ctx = $('Context').first().json;
   return $input.all().map((transit, i) => {
     const l = $('Plan commute').itemMatching(i).json;
     const c = commute($('TfL walking').itemMatching(i).json.body, transit.json.body);
     const flags = [...l.flags, ...commuteFlags(c, ctx.criteria), ...(l._geoApprox ? ['commute_approx'] : [])];
     const listing = { ...l, commute: c, flags };
-    return { json: { ...listing, _claudeRequest: predictionRequest(listing, ctx, s) } };
+    return { json: { ...listing, _geminiRequest: predictionRequest(listing, ctx) } };
   });
   `);
 
-  const claudePredict = http("Claude predict", {
+  const geminiPredict = http("Gemini predict", {
     method: "POST",
-    url: "https://api.anthropic.com/v1/messages",
-    body: "={{ JSON.stringify($json._claudeRequest) }}",
-    headers: CLAUDE_HEADERS,
-    credentials: ANTHROPIC,
+    url: GEMINI_URL,
+    body: "={{ JSON.stringify($json._geminiRequest) }}",
+    credentials: GEMINI,
     auth: "generic",
   });
 
-  const buildDoc = codeNode("Build listing doc", ["firestore", "claude", "doc"], `
+  const buildDoc = codeNode("Build listing doc", ["firestore", "gemini", "doc"], `
   const ctx = $('Context').first().json;
   return $input.all().map((item, i) => {
     const l = $('Build prediction request').itemMatching(i).json;
@@ -347,7 +342,7 @@ export function ingest() {
   `);
 
   connect(route, geocodeNode, 0);
-  chain(geocodeNode, planCommute, tflWalk, tflTransit, predictRequest, claudePredict, buildDoc);
+  chain(geocodeNode, planCommute, tflWalk, tflTransit, predictRequest, geminiPredict, buildDoc);
 
   // ---------------------------------------------------------------------------------------------
   // 7 · Save, then (phase 2 only) notify
@@ -403,12 +398,12 @@ export function ingest() {
   const layout = {
     "Every 15 minutes": [0, 0], Settings: [220, 0], "List mails": [440, 0], "Pick new mails": [660, 0], "Get mail": [880, 0],
     "Mark mails processed": [1980, 480], "Load profile": [1100, 0], "Plan context fetch": [1320, 0],
-    "Fetch context": [1540, 0], Context: [1760, 0], "Parse alert mails": [1980, 0], "Needs Claude?": [2200, 0],
-    "Build extraction request": [2420, -160], "Claude extract": [2640, -160], "Read extraction": [2860, -160],
+    "Fetch context": [1540, 0], Context: [1760, 0], "Parse alert mails": [1980, 0], "Needs Gemini?": [2200, 0],
+    "Build extraction request": [2420, -160], "Gemini extract": [2640, -160], "Read extraction": [2860, -160],
     "Use parser results": [2640, 120], "Normalize listings": [3080, 0], "Lookup by id": [3300, 0],
     "Find duplicate": [3520, 0], Classify: [3740, 0], "Route by kind": [3960, 0],
     Geocode: [4180, -200], "Plan commute": [4400, -200], "TfL walking": [4620, -200], "TfL transit": [4840, -200],
-    "Build prediction request": [5060, -200], "Claude predict": [5280, -200], "Build listing doc": [5500, -200],
+    "Build prediction request": [5060, -200], "Gemini predict": [5280, -200], "Build listing doc": [5500, -200],
     "Build duplicate doc": [5500, 40], "Touch lastSeenAt": [4180, 260],
     "Save listing": [5720, -80], "Hunt phase and score ≥ 4?": [5940, -80], "Notify (channel open)": [6160, -160],
   };

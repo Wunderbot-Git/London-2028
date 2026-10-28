@@ -59,7 +59,7 @@ Agent-Postfach (AgentMail, london@agentmail.to)
         │
         ▼
 n8n (self-hosted) ──► TfL Journey Planner API (Schulweg)
-        │          ──► Claude API (Extraktion-Fallback, Prognose, Profil)
+        │          ──► Gemini API (Extraktion-Fallback, Prognose, Profil)
         ▼
 Firestore (GCP)  ◄──►  Web-App (Cloud Run): Review-Oberfläche für Philipp und Manuela
 ```
@@ -99,11 +99,11 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | 1 | Abfrage des AgentMail-Postfachs (alle 15 Min.) | neue, noch nicht verarbeitete Mails |
 | 2 | Router nach Absender | ein Zweig pro Portal |
 | 3 | Parser (Code-Node je Portal) | Inserate aus dem Mail-HTML ziehen: URL, Quelle, Quell-ID, Titel/Adresse, Postcode, Preis, Zimmer, Bild-URL, Schlagworte |
-| 4 | LLM-Fallback | wenn der Parser scheitert oder Felder fehlen: Extraktion per Claude in festes JSON-Schema |
+| 4 | LLM-Fallback | wenn der Parser scheitert oder Felder fehlen: Extraktion per Gemini in festes JSON-Schema |
 | 5 | Normalisieren | Preis auf pcm, Mietform auf Enum, Postcode-Bereich |
 | 6 | Deduplizieren | Abgleich mit Firestore (Quell-ID, sonst Fingerprint) |
 | 7 | Geocoding + Schulweg | TfL Journey Planner zur DSL: zu Fuß, ÖPNV; optional Auto |
-| 8 | Prognose | Claude bewertet mit aktuellem Präferenzprofil + Few-Shot-Beispielen → Score 1–5 + Begründung |
+| 8 | Prognose | Gemini bewertet mit aktuellem Präferenzprofil + Few-Shot-Beispielen → Score 1–5 + Begründung |
 | 9 | Speichern | Firestore `listings` |
 | 10 | Benachrichtigung (nur Phase 2) | bei Prognose ≥ 4 sofort; Kanal noch offen |
 
@@ -204,8 +204,8 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 - Duplikate werden nur einmal gezeigt
 
 ### 6.3 Lernschleife
-- **Prognose:** Claude erhält Inseratsdaten, aktuelles Profil (Regeln und harte Filter) und 6–10 Few-Shot-Beispiele mit Bewertung und Begründung. Ausgabe: `{ score: 1–5, rationale: string }`
-- **Profil-Update (wöchentlich, ab 15 Bewertungen):** Claude leitet aus allen Bewertungen, Tags und Notizen Regeln ab. Ein neues Profil wird nur übernommen, wenn es auf den bisherigen Bewertungen besser trifft als das alte (Backtest). Harte Filter werden nie automatisch gesetzt, nur vorgeschlagen.
+- **Prognose:** Gemini erhält Inseratsdaten, aktuelles Profil (Regeln und harte Filter) und 6–10 Few-Shot-Beispiele mit Bewertung und Begründung. Ausgabe: `{ score: 1–5, rationale: string }`
+- **Profil-Update (wöchentlich, ab 15 Bewertungen):** Gemini leitet aus allen Bewertungen, Tags und Notizen Regeln ab. Ein neues Profil wird nur übernommen, wenn es auf den bisherigen Bewertungen besser trifft als das alte (Backtest). Harte Filter werden nie automatisch gesetzt, nur vorgeschlagen.
 - **Uneinigkeit:** Liegen Philipp und Manuela 2 oder mehr Punkte auseinander, markiert der Wochenabschluss das Inserat. In die Prognose geht der Mittelwert ein.
 
 ### 6.4 Kennzahlen
@@ -219,8 +219,8 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 ## 7. Datenschutz und Betrieb
 - Firestore und App nur für die zwei freigegebenen Konten
 - Keine Daten von Vermietern über das hinaus, was in den Alert-Mails steht
-- API-Keys (Claude, TfL) nur als n8n-Credentials bzw. GCP Secret Manager
-- Kosten: Cloud Run und Firestore im Gratisrahmen erwartet; Claude-API-Kosten gering (ca. 50–150 Inserate pro Woche)
+- API-Keys (Gemini, TfL) nur als n8n-Credentials bzw. GCP Secret Manager
+- Kosten: Cloud Run und Firestore im Gratisrahmen erwartet; Gemini-API-Kosten gering (ca. 50–150 Inserate pro Woche)
 - Nach Einzug: Alerts abbestellen, Agent-Konto stilllegen, Daten exportieren und löschen
 
 ---
