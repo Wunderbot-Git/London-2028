@@ -121,6 +121,10 @@ export function listingBlocks(text) {
 
 const num = (s) => Number(String(s).replace(/,/g, ""));
 
+// Images in alert mails that are not listing photos (seen in the first real alerts: banners,
+// rating stars, ad-server pixels); the web app applies the same filter to older listings.
+export const NOT_A_PHOTO = /logo|icon|spacer|pixel|tracking|banner|badge|rating|stars|\/imp\/|\/email|agent-products|app-?store|google-?play|\.gif(\?|$)/i;
+
 /** Reads what it can from a listing's text block. Missing fields stay null. */
 export function readBlock(block) {
   const raw = block.text;
@@ -142,7 +146,7 @@ export function readBlock(block) {
     garden: null,
     parking: null,
     availableText: null,
-    photos: [...raw.matchAll(IMG_RE)].map((m) => m[1]).filter((src) => !/logo|icon|spacer|pixel|tracking/i.test(src)),
+    photos: [...raw.matchAll(IMG_RE)].map((m) => m[1]).filter((src) => !NOT_A_PHOTO.test(src)),
   };
 
   const price = /£\s?([\d,]{3,})(?:\.\d{2})?\s*(pcm|pw|p\/w|p\/m|per\s+month|per\s+week|a\s+month|a\s+week|monthly|weekly)?/i.exec(text);

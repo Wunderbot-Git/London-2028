@@ -74,6 +74,8 @@ describe("parseMail", () => {
     ]);
     expect(m.listings[0].url).toBe("https://www.onthemarket.com/details/21000001/?r-alert-email-id=x&utm_source=property_alert");
     expect(m.listings[0].photos).toEqual(["http://media.onthemarket.com/properties/21000001/1/image-0-480x320.jpg"]);
+    // The last card's block runs to the end of the mail: the new-homes banner is not a photo.
+    expect(m.listings[1].photos).toEqual(["http://media.onthemarket.com/properties/21000002/1/image-0-480x320.jpg"]);
   });
 
   it("sends agency newsletters to the Gemini fallback", () => {

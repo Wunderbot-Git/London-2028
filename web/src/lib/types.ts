@@ -43,8 +43,8 @@ export interface Listing {
   minTermMonths?: number | null;
   maxTermMonths?: number | null;
   availableFrom?: string | null;
-  beds: number;
-  baths: number;
+  beds: number | null;
+  baths: number | null;
   furnished: Furnished;
   garden?: boolean | null;
   parking?: boolean | null;

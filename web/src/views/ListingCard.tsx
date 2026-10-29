@@ -9,6 +9,8 @@ import {
   gbp,
   hue,
   letLabel,
+  listingPhoto,
+  photoCandidates,
   postcodeDistrict,
   sourceLabel,
   weeklyPrice,
@@ -32,12 +34,14 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
   const [score, setScore] = useState<number | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState("");
+  const [photoTry, setPhotoTry] = useState(0); // next size on error, colour tile when none loads
+  const photo = photoCandidates(listingPhoto(L.photos))[photoTry] ?? null;
 
   const commute = commuteLines(L.commute);
   const src = sourceLabel(L.source);
   const facts = [
-    `${L.beds} Schlafzimmer`,
-    `${L.baths} ${L.baths === 1 ? "Bad" : "Bäder"}`,
+    L.beds == null ? null : `${L.beds} Schlafzimmer`,
+    L.baths == null ? null : `${L.baths} ${L.baths === 1 ? "Bad" : "Bäder"}`,
     L.garden == null ? null : L.garden ? "Garten" : "Kein Garten",
   ].filter(Boolean);
   const line2 = [commute.main && `${commute.main} zur Schule`, letLabel(L)].filter(Boolean).join(" · ");
@@ -46,7 +50,11 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
 
   return (
     <article className="card enter">
-      <div className="hero" style={{ ["--h" as string]: hue(L.id) }}>
+      <div className={photo ? "hero has-photo" : "hero"} style={{ ["--h" as string]: hue(L.id) }}>
+        {photo && (
+          // Shown straight from the portal (not copied); no referrer, so hotlink checks see a plain request.
+          <img className="photo" src={photo} alt="" referrerPolicy="no-referrer" loading="eager" onError={() => setPhotoTry((n) => n + 1)} />
+        )}
         {L.sample && <span className="sample">Beispiel</span>}
         <span className="src">{src}</span>
         <div className="pc">{postcodeDistrict(L.postcode)}</div>

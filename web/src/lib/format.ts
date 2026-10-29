@@ -74,12 +74,34 @@ export function availableLabel(iso: string | null | undefined): string {
 }
 
 export function sourceLabel(source: string): string {
+  if (source === "agency:onthemarket.com") return "OnTheMarket"; // read by Gemini before the parser knew the portal
   if (source.startsWith("agency:")) return source.slice(7);
-  const known: Record<string, string> = { rightmove: "Rightmove", zoopla: "Zoopla", openrent: "OpenRent" };
+  const known: Record<string, string> = { rightmove: "Rightmove", zoopla: "Zoopla", openrent: "OpenRent", onthemarket: "OnTheMarket" };
   return known[source] ?? source;
 }
 
-// Stable hue per listing for the placeholder tile until real photos are allowed (spec §8 #9).
+// Alert mails also carry banners, rating stars and tracking pixels next to the listing photos.
+const NOT_A_PHOTO = /logo|icon|spacer|pixel|tracking|banner|badge|rating|stars|\/imp\/|\/email|agent-products|app-?store|google-?play|\.gif(\?|$)/i;
+
+/** First image that looks like a listing photo, on https (OnTheMarket sends http links). */
+export function listingPhoto(photos: string[] | null | undefined): string | null {
+  const url = (photos ?? []).find((p) => /^https?:\/\//.test(p) && !NOT_A_PHOTO.test(p));
+  return url ? url.replace(/^http:\/\//, "https://") : null;
+}
+
+/**
+ * Sizes to try for the card, largest first: alert mails carry thumbnails (Rightmove 296×197),
+ * the portals' image servers also serve larger variants of the same photo.
+ */
+export function photoCandidates(photo: string | null): string[] {
+  if (!photo) return [];
+  const large = photo
+    .replace(/(media\.rightmove\.co\.uk\/.*_max_)\d+x\d+/, "$1656x437")
+    .replace(/(lid\.zoocdn\.com\/)(?:u\/)?\d+\/\d+\//, "$11024/768/");
+  return large === photo ? [photo] : [large, photo];
+}
+
+// Stable hue per listing for the placeholder tile when there is no photo.
 export function hue(id: string): number {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;

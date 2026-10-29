@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commuteLines, deviationLabel, letLabel, postcodeDistrict, weeklyPrice } from "./format";
+import { commuteLines, deviationLabel, letLabel, listingPhoto, photoCandidates, postcodeDistrict, sourceLabel, weeklyPrice } from "./format";
 import { isoWeek } from "./week";
 
 describe("commuteLines", () => {
@@ -47,5 +47,34 @@ describe("isoWeek", () => {
     expect(isoWeek(new Date(2026, 9, 27))).toBe("2026-W44");
     expect(isoWeek(new Date(2026, 10, 15))).toBe("2026-W46"); // Sunday belongs to the week before Monday
     expect(isoWeek(new Date(2027, 0, 1))).toBe("2026-W53");
+  });
+});
+
+describe("listingPhoto", () => {
+  it("picks the listing photo and skips banners and tracking pixels (real alert mails)", () => {
+    expect(listingPhoto([
+      "https://mns.asrvkeez.com/imp/2/ec8d02bf/abc?segment=",
+      "https://lid.zoocdn.com/645/430/9fd8cfd0.jpg",
+    ])).toBe("https://lid.zoocdn.com/645/430/9fd8cfd0.jpg");
+    expect(listingPhoto([
+      "http://media.onthemarket.com/properties/20652669/1655426553/image-0-480x320.jpg",
+      "https://media.onthemarket.com/agent-products/internal-alert-banners/x-Email.png",
+    ])).toBe("https://media.onthemarket.com/properties/20652669/1655426553/image-0-480x320.jpg");
+    expect(listingPhoto(["https://media.onthemarket.com/email/rating_stars.png"])).toBeNull();
+    expect(listingPhoto(undefined)).toBeNull();
+  });
+  it("names OnTheMarket however the listing came in", () => {
+    expect(sourceLabel("onthemarket")).toBe("OnTheMarket");
+    expect(sourceLabel("agency:onthemarket.com")).toBe("OnTheMarket");
+  });
+});
+
+describe("photoCandidates", () => {
+  it("tries a larger size first where the image server has one", () => {
+    const rm = "https://media.rightmove.co.uk/dir/crop/10:9-16:9/property-photo/42d1691ee/91355817/42d_max_296x197.jpeg";
+    expect(photoCandidates(rm)).toEqual([rm.replace("296x197", "656x437"), rm]);
+    expect(photoCandidates("https://lid.zoocdn.com/645/430/abc.jpg")).toEqual(["https://lid.zoocdn.com/1024/768/abc.jpg", "https://lid.zoocdn.com/645/430/abc.jpg"]);
+    expect(photoCandidates("https://media.onthemarket.com/properties/1/2/image-0-480x320.jpg")).toEqual(["https://media.onthemarket.com/properties/1/2/image-0-480x320.jpg"]);
+    expect(photoCandidates(null)).toEqual([]);
   });
 });

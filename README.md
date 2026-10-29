@@ -30,6 +30,7 @@ Ohne Firebase-Konfiguration läuft die App im **Demo-Modus**: Beispielinserate, 
 - **Review:** ein Inserat pro Bildschirm, Bewertung 1–5, Prognose und Begründung erst nach der Bewertung, Gründe-Tags und Notiz, Überspringen (speichert `score: null`). Wer zwischendurch abbricht, macht beim nächsten offenen Inserat weiter.
 - **Wochenabschluss:** bewertet, Trefferquote ±1, MAE, gelernte Regeln (aus dem neuesten `profiles`-Dokument, sonst Hinweise aus den Tags der Woche), Tabelle P / M / KI, Uneinigkeit ≥ 2 orange markiert, Einigkeit in Prozent.
 - Jede Person lädt bis zum eigenen Wochenabschluss nur ihre eigenen Bewertungen (Spec §6.1, Punkt 7).
+- **Fotos:** das erste Inseratsfoto aus der Alert-Mail, direkt vom Bildserver des Portals geladen (nicht kopiert, ohne Referrer), wenn möglich in größerer Auflösung; Banner und Tracking-Pixel werden herausgefiltert. Lädt kein Foto, erscheint die Farbkachel. Zu offenem Punkt 9 (Hotlinking zulässig?): Die App ist nur für zwei Personen und zeigt die Fotos verlinkt; bei Einwänden eines Portals in `listingPhoto` (`web/src/lib/format.ts`) abschalten.
 
 ## Firestore
 
@@ -85,5 +86,4 @@ Die Firebase-Web-Konfiguration ist kein Geheimnis; sie wird zur Laufzeit von `we
 ## Noch nicht gebaut
 
 - Benachrichtigungen (offener Punkt 7)
-- Echte Fotos statt Farbkachel (offener Punkt 9)
 - Spätere Ansichten: Karte, Favoriten, Vergleich, Prognosegüte im Zeitverlauf (Spec §5.5)
