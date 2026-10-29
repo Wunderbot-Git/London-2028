@@ -7,9 +7,10 @@ Dieses Repo enthält den Teil, der als Code gepflegt wird (Spec §4, Variante B)
 | Ordner | Inhalt |
 |---|---|
 | `web/` | Web-App für Philipp und Manuela (Review und Wochenabschluss), aufgebaut aus Prototyp v2; Deploy auf Cloud Run |
-| `firestore/` | Firestore-Sicherheitsregeln mit Tests gegen den Emulator |
+| `firestore/` | Firestore-Sicherheitsregeln mit Tests gegen den Emulator (Push-Regeln zusätzlich über die Rules-API: `rules_api_test.py`) |
 | `n8n/` | Workflows `london-ingest` (Alert-Mails → Firestore) und `london-weekly` (Wochenstapel, Kennzahlen, Profil-Update) mit getesteter Code-Node-Logik, siehe [`n8n/README.md`](n8n/README.md) |
 | `tools/enrich/` | Details und alle Fotos der Stapel-Inserate von den Inseratsseiten, über Claude in Chrome; siehe [`tools/enrich/README.md`](tools/enrich/README.md) |
+| `notify/` | Cloud Function: Web-Push „Neue Inserate zum Bewerten“ bei neuem Wochenstapel, siehe [`notify/README.md`](notify/README.md) |
 | `docs/` | Spezifikation |
 
 Datenbeschaffung und Lernschleife laufen in n8n; die Workflows werden hier als JSON gebaut und in n8n importiert.
