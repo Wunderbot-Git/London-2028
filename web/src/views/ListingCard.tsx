@@ -9,7 +9,7 @@ import {
   gbp,
   hue,
   letLabel,
-  listingPhoto,
+  listingPhotos,
   photoCandidates,
   propertyTypeLabel,
   postcodeDistrict,
@@ -35,8 +35,14 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
   const [score, setScore] = useState<number | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState("");
+  const photos = listingPhotos(L.photos);
+  const [shown, setShown] = useState(0); // which photo the hero shows
   const [photoTry, setPhotoTry] = useState(0); // next size on error, colour tile when none loads
-  const photo = photoCandidates(listingPhoto(L.photos))[photoTry] ?? null;
+  const photo = photoCandidates(photos[shown] ?? null)[photoTry] ?? null;
+  const show = (i: number) => {
+    setShown(i);
+    setPhotoTry(0);
+  };
 
   const commute = commuteLines(L.commute);
   const src = sourceLabel(L.source);
@@ -44,6 +50,7 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
     propertyTypeLabel(L.propertyType),
     L.beds == null ? null : `${L.beds} Schlafzimmer`,
     L.baths == null ? null : `${L.baths} ${L.baths === 1 ? "Bad" : "Bäder"}`,
+    L.sizeSqm ? `${L.sizeSqm} m²` : null,
     L.garden == null ? null : L.garden ? "Garten" : "Kein Garten",
   ].filter(Boolean);
   const line2 = [commute.main && `${commute.main} zur Schule`, letLabel(L)].filter(Boolean).join(" · ");
@@ -65,6 +72,16 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
           {L.area ? `, ${L.area}` : ""}
         </div>
       </HeroLink>
+
+      {photos.length > 1 && (
+        <div className="strip" role="group" aria-label={`${photos.length} Fotos`}>
+          {photos.map((p, i) => (
+            <button key={p} className="thumb" aria-pressed={i === shown} aria-label={`Foto ${i + 1}`} onClick={() => show(i)}>
+              <img src={p} alt="" loading="lazy" referrerPolicy="no-referrer" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div>
         <p className="price num">
@@ -117,11 +134,30 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
               <dd>{L.agent}</dd>
             </>
           )}
+          {L.deposit != null && (
+            <>
+              <dt>Kaution</dt>
+              <dd className="num">{gbp(L.deposit)}</dd>
+            </>
+          )}
           <dt>Energieklasse</dt>
           <dd>{L.epc || "–"}</dd>
           <dt>Pro Woche</dt>
           <dd className="num">{gbp(weeklyPrice(L.priceMonthly))}</dd>
         </dl>
+        {(L.floorplans ?? []).map((f, i) => (
+          <a key={f} className="ext" href={f} target="_blank" rel="noopener noreferrer">
+            Grundriss{(L.floorplans ?? []).length > 1 ? ` ${i + 1}` : ""} ↗
+          </a>
+        ))}
+        {(L.keyFeatures ?? []).length > 0 && (
+          <ul className="features">
+            {(L.keyFeatures ?? []).map((k) => (
+              <li key={k}>{k}</li>
+            ))}
+          </ul>
+        )}
+        {L.description && <p className="desc">{L.description}</p>}
         {!L.url && <span className="ext dim">{L.sample ? "Erfundenes Beispiel" : "Kein Link"}</span>}
       </details>
 

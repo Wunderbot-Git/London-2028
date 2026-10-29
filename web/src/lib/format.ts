@@ -74,6 +74,7 @@ const FLAG_LABEL: Record<string, string> = {
   periodic_risk: "Reguläre Miete: Vermieter sucht wohl Langzeitmieter",
   too_far: "Schulweg länger als vereinbart",
   commute_approx: "Schulweg grob geschätzt (nur Postcode-Bezirk bekannt)",
+  let_agreed: "Laut Portal schon vermietet",
 };
 export const flagLabel = (f: string) => FLAG_LABEL[f] ?? f;
 
@@ -95,11 +96,15 @@ export function sourceLabel(source: string): string {
 // Alert mails also carry banners, rating stars and tracking pixels next to the listing photos.
 const NOT_A_PHOTO = /logo|icon|spacer|pixel|tracking|banner|badge|rating|stars|\/imp\/|\/email|agent-products|app-?store|google-?play|\.gif(\?|$)/i;
 
-/** First image that looks like a listing photo, on https (OnTheMarket sends http links). */
-export function listingPhoto(photos: string[] | null | undefined): string | null {
-  const url = (photos ?? []).find((p) => /^https?:\/\//.test(p) && !NOT_A_PHOTO.test(p));
-  return url ? url.replace(/^http:\/\//, "https://") : null;
+/** Listing photos without banners and pixels, on https (OnTheMarket sends http links). */
+export function listingPhotos(photos: string[] | null | undefined): string[] {
+  return (photos ?? [])
+    .filter((p) => /^https?:\/\//.test(p) && !NOT_A_PHOTO.test(p))
+    .map((p) => p.replace(/^http:\/\//, "https://"));
 }
+
+/** First listing photo. */
+export const listingPhoto = (photos: string[] | null | undefined): string | null => listingPhotos(photos)[0] ?? null;
 
 /**
  * Sizes to try for the card, largest first: alert mails carry thumbnails (Rightmove 296×197),

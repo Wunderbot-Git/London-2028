@@ -151,6 +151,11 @@ describe("gemini", () => {
     expect(r.contents[0].parts[0].text).toContain("Schulweg zur DSL: 5 Min. zu Fuß");
     expect(r.generationConfig.thinkingConfig.thinkingLevel).toBe("medium");
     expect(describeListing(listing)).toContain("Garten: ja; Parkplatz: ja");
+    const rich = describeListing({ ...listing, sizeSqm: 120, keyFeatures: ["Roof terrace"], description: "Split-level\n apartment", letAgreed: true });
+    expect(rich).toContain("Größe: 120 m²");
+    expect(rich).toContain("Merkmale laut Inserat: Roof terrace");
+    expect(rich).toContain("Beschreibung (Auszug): Split-level apartment");
+    expect(rich).toContain("Laut Portal bereits vermietet.");
   });
 
   it("reads answers, skips thought parts and refuses bad ones loudly", () => {

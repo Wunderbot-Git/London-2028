@@ -9,6 +9,7 @@ Dieses Repo enthält den Teil, der als Code gepflegt wird (Spec §4, Variante B)
 | `web/` | Web-App für Philipp und Manuela (Review und Wochenabschluss), aufgebaut aus Prototyp v2; Deploy auf Cloud Run |
 | `firestore/` | Firestore-Sicherheitsregeln mit Tests gegen den Emulator |
 | `n8n/` | Workflows `london-ingest` (Alert-Mails → Firestore) und `london-weekly` (Wochenstapel, Kennzahlen, Profil-Update) mit getesteter Code-Node-Logik, siehe [`n8n/README.md`](n8n/README.md) |
+| `tools/enrich/` | Details und alle Fotos der Stapel-Inserate von den Inseratsseiten, über Claude in Chrome; siehe [`tools/enrich/README.md`](tools/enrich/README.md) |
 | `docs/` | Spezifikation |
 
 Datenbeschaffung und Lernschleife laufen in n8n; die Workflows werden hier als JSON gebaut und in n8n importiert.
@@ -30,7 +31,7 @@ Ohne Firebase-Konfiguration läuft die App im **Demo-Modus**: Beispielinserate, 
 - **Review:** ein Inserat pro Bildschirm, Bewertung 1–5, Prognose und Begründung erst nach der Bewertung, Gründe-Tags und Notiz, Überspringen (speichert `score: null`). Wer zwischendurch abbricht, macht beim nächsten offenen Inserat weiter.
 - **Wochenabschluss:** bewertet, Trefferquote ±1, MAE, gelernte Regeln (aus dem neuesten `profiles`-Dokument, sonst Hinweise aus den Tags der Woche), Tabelle P / M / KI, Uneinigkeit ≥ 2 orange markiert, Einigkeit in Prozent.
 - Jede Person lädt bis zum eigenen Wochenabschluss nur ihre eigenen Bewertungen (Spec §6.1, Punkt 7).
-- **Volles Inserat:** Ein Tipp auf das Foto oder auf „Alle Fotos und Details auf …“ öffnet das Inserat beim Portal (alle Fotos, Grundriss, Bäder, Verfügbarkeit). Die App selbst kennt nur, was in der Alert-Mail steht; Inseratsseiten werden nicht ausgelesen (Spec §1).
+- **Volles Inserat:** Ein Tipp auf das Foto oder auf „Alle Fotos und Details auf …“ öffnet das Inserat beim Portal (alle Fotos, Grundriss, Bäder, Verfügbarkeit). Für die Stapel-Inserate holt `tools/enrich` zusätzlich Details und alle Fotos von der Inseratsseite (Fotoleiste, Grundriss, Beschreibung, „schon vermietet“).
 - **Fotos:** das erste Inseratsfoto aus der Alert-Mail, direkt vom Bildserver des Portals geladen (nicht kopiert, ohne Referrer), wenn möglich in größerer Auflösung; Banner und Tracking-Pixel werden herausgefiltert. Lädt kein Foto, erscheint die Farbkachel. Zu offenem Punkt 9 (Hotlinking zulässig?): Die App ist nur für zwei Personen und zeigt die Fotos verlinkt; bei Einwänden eines Portals in `listingPhoto` (`web/src/lib/format.ts`) abschalten.
 
 ## Firestore

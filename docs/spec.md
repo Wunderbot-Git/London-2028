@@ -17,6 +17,7 @@ Gesucht wird ein möbliertes Haus oder eine Wohnung für die Familie (2 Erwachse
 
 **Nicht-Ziele**
 - Kein Scraping von Inseratsseiten. Die Portale blockieren es und verbieten es in ihren Nutzungsbedingungen. Datenquelle sind ausschließlich Alert-Mails.
+  - **Ausnahme (29.10.2026):** Für die 12 Inserate des aktuellen Wochenstapels öffnet Claude die Inseratsseiten in Philipps eigenem Chrome und übernimmt Details und Fotos (`tools/enrich/`). Kein serverseitiger Abruf, keine Massenabfragen.
 - Keine automatische Kontaktaufnahme mit Vermietern. Anfragen werden höchstens als Entwurf vorbereitet.
 - Kein allgemeiner Marktbericht.
 
@@ -135,6 +136,9 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | propertyType | enum | `flat` \| `maisonette` \| `detached` \| `semi_detached` \| `terraced` \| `house` \| `unknown` (aus der Alert-Mail) |
 | agent | string? | Makler laut Alert-Mail („Marketed by …“) |
 | priceReduced | bool? | Alert meldet eine Preissenkung |
+| sizeSqm, deposit, description, keyFeatures, floorplans | – | von der Inseratsseite (`tools/enrich`), nur für Stapel-Inserate |
+| letAgreed | bool? | laut Inseratsseite schon vermietet |
+| detailsFetchedAt | timestamp? | wann die Details geholt wurden |
 | garden, parking | bool? | |
 | epc | string? | |
 | photos | string[] | Bild-URLs aus der Alert-Mail |

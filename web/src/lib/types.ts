@@ -61,6 +61,14 @@ export interface Listing {
   reviewWeek?: string | null;
   // Not in the spec's field list; free-text highlight shown as "Besonderheit".
   highlight?: string | null;
+  // From the listing page (tools/enrich), when fetched
+  sizeSqm?: number | null;
+  deposit?: number | null;
+  description?: string | null;
+  keyFeatures?: string[];
+  floorplans?: string[];
+  letAgreed?: boolean | null;
+  detailsFetchedAt?: string | null;
   // Demo data only: marks invented listings.
   sample?: boolean;
 }

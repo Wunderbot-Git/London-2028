@@ -159,6 +159,10 @@ export function describe(l) {
     `Zimmer: ${l.beds ?? "?"} Schlafzimmer, ${l.baths ?? "?"} Bäder; Einrichtung: ${l.furnished}`,
     `Garten: ${l.garden == null ? "unbekannt" : l.garden ? "ja" : "nein"}; Parkplatz: ${l.parking == null ? "unbekannt" : l.parking ? "ja" : "nein"}`,
     `Schulweg zur DSL: ${school}`,
+    l.sizeSqm ? `Größe: ${l.sizeSqm} m²` : null,
+    l.keyFeatures?.length ? `Merkmale laut Inserat: ${l.keyFeatures.slice(0, 8).join("; ")}` : null,
+    l.description ? `Beschreibung (Auszug): ${l.description.replace(/\s+/g, " ").slice(0, 600)}` : null,
+    l.letAgreed ? "Laut Portal bereits vermietet." : null,
     l.highlight ? `Besonderheit: ${l.highlight}` : null,
     l.flags?.length ? `Hinweise: ${l.flags.join(", ")}` : null,
   ].filter(Boolean).join("\n");
