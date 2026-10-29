@@ -18,16 +18,31 @@ Ausnahme von Spec §1 („kein Scraping“), beschlossen am 29.10.2026.
    python3 tools/enrich/firestore_enrich.py todo        # id<TAB>url, nur ohne detailsFetchedAt
    ```
 
-2. Für jedes Inserat in Chrome: Seite öffnen, kurz warten, dann im Seitenkontext ausführen:
-
-   ```js
-   /* Inhalt von tools/enrich/extract.js */ ; JSON.stringify(extractListing(window))
-   ```
-
-3. Ergebnisse sammeln als `{"items":[{"id":"…","data":{…}}, …]}` und schreiben:
+2. Empfänger auf dem Mac starten (nur 127.0.0.1; Port 8765 ist dort belegt, daher 8791):
 
    ```bash
-   python3 tools/enrich/firestore_enrich.py write ergebnisse.json
+   python3 tools/enrich/receiver.py /tmp/lwr/results-W45.json --port 8791
+   ```
+
+3. Für jedes Inserat in Chrome: Seite öffnen, 2 s warten, dann im Seitenkontext ausführen
+   (`<ID>` = Firestore-ID aus Schritt 1):
+
+   ```js
+   /* Inhalt von tools/enrich/extract.js */
+   const json = JSON.stringify(extractListing(window)); const bytes = new TextEncoder().encode(json);
+   let bin = ''; bytes.forEach((c) => (bin += String.fromCharCode(c)));
+   const d = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+   setTimeout(() => { location.href = 'http://127.0.0.1:8791/save?id=<ID>&d=' + d; }, 50);
+   ```
+
+   Der Tab landet auf `/ok?id=<ID>` mit „LWR-OK … photos=… baths=…“. So kommen die Daten ohne
+   Kopieren auf den Mac (die Zwischenablage ist für Claude in Chrome gesperrt).
+
+4. Schreiben und Empfänger beenden:
+
+   ```bash
+   python3 tools/enrich/firestore_enrich.py write /tmp/lwr/results-W45.json
+   curl -s http://127.0.0.1:8791/stop
    ```
 
    Gesetzt werden nur die Detailfelder (`updateMask`), dazu `detailsFetchedAt`, neu berechnete
