@@ -78,6 +78,30 @@ describe("parseMail", () => {
     expect(m.listings[1].photos).toEqual(["http://media.onthemarket.com/properties/21000002/1/image-0-480x320.jpg"]);
   });
 
+  it("reads property type, agent and price cuts as worded in real Rightmove and Zoopla alerts", () => {
+    // Card markup reduced to what matters; wording as in the alerts of 29 Oct 2026.
+    const rightmove = parseMail({ id: "r", subject: "Philipp, we've found you 8 properties in TW10 7AH", from: { value: [{ address: "property@alert.rightmove.co.uk" }] }, html: `
+      <div><a href="https://www.rightmove.co.uk/properties/94892853"><img src="https://media.rightmove.co.uk/property-photo/a/94892853/x_max_296x197.jpeg"></a></div>
+      <div>15</div><div>1</div>
+      <div><a href="https://www.rightmove.co.uk/properties/94892853">&pound;9,997 pcm</a></div>
+      <div><a href="https://www.rightmove.co.uk/properties/94892853">5 bedroom detached house to rent</a></div>
+      <div>Eversley Park, Wimbledon Common, London, SW19</div>
+      <div>Marketed by Foxtons, Wimbledon</div>
+      <div><a href="https://clicks.rightmove.co.uk/f/a/x">Email Agent</a></div>` });
+    expect(rightmove.listings[0]).toMatchObject({ typeText: "detached house", agent: "Foxtons, Wimbledon", priceReduced: null, price: 9997, beds: 5 });
+    const zoopla = parseMail({ id: "z", subject: "New listings: 27 new properties to rent", from: { value: [{ address: "propertyalerts@comms-2.zoopla.co.uk" }] }, html: `
+      <div><a href="https://www.zoopla.co.uk/to-rent/details/74521729/"><img src="https://lid.zoocdn.com/645/430/a.jpg"></a></div>
+      <div>&pound;4,500 pcm (&pound;1,038.46 pw)</div><div>Reduced by &pound;57.69 pw</div>
+      <div>3 bed flat to rent</div><div>Radipole Road, London SW6</div>
+      <div><a href="https://www.zoopla.co.uk/to-rent/details/74521729/">View property details</a></div>` });
+    expect(zoopla.listings[0]).toMatchObject({ typeText: "flat", priceReduced: true, price: 4500, pricePeriod: "month" });
+  });
+
+  it("marks every listing of an OnTheMarket price-cut alert as reduced", () => {
+    const m = parseMail({ ...mail("onthemarket", "property-alerts@mail.onthemarket.com"), subject: "Reduced price properties in TW10 7AH" });
+    expect(m.listings.map((l) => [l.typeText, l.priceReduced])).toEqual([["semi-detached house", true], ["house", true]]);
+  });
+
   it("sends agency newsletters to the Gemini fallback", () => {
     const m = parseMail(mail("agency", "news@example-lettings.co.uk"));
     expect(m.source).toBe("agency:example-lettings.co.uk");

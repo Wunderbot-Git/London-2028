@@ -20,6 +20,20 @@ export const AREAS = {
 
 export const LET_TYPES = ["short_let", "flexible", "periodic", "corporate", "licence", "unknown"];
 export const FURNISHED = ["furnished", "part", "unfurnished", "either", "unknown"];
+export const PROPERTY_TYPES = ["flat", "maisonette", "detached", "semi_detached", "terraced", "house", "unknown"];
+
+/** "semi-detached house", "apartment", "end of terrace house" → PROPERTY_TYPES. */
+export function propertyTypeFromText(t) {
+  if (!t) return "unknown";
+  const s = t.toLowerCase();
+  if (/semi[\s-]?detached/.test(s)) return "semi_detached";
+  if (/detached/.test(s)) return "detached";
+  if (/terrace|mews/.test(s)) return "terraced";
+  if (/maisonette|duplex/.test(s)) return "maisonette";
+  if (/flat|apartment|penthouse|studio/.test(s)) return "flat";
+  if (/house|bungalow|cottage|home/.test(s)) return "house";
+  return "unknown";
+}
 
 export function letTypeFromText(t) {
   if (!t) return "unknown";
@@ -92,6 +106,9 @@ export function fromParser(l, today) {
     epc: null,
     highlight: null,
     photos: l.photos ?? [],
+    propertyType: propertyTypeFromText(l.typeText),
+    agent: l.agent ?? null,
+    priceReduced: l.priceReduced ?? null,
   };
 }
 
@@ -198,6 +215,9 @@ export function normalize(x, ctx) {
     beds,
     baths: x.baths ?? null,
     furnished: FURNISHED.includes(x.furnished) ? x.furnished : "unknown",
+    propertyType: PROPERTY_TYPES.includes(x.propertyType) ? x.propertyType : "unknown",
+    agent: x.agent?.trim() || null,
+    priceReduced: x.priceReduced ?? null,
     garden: x.garden ?? null,
     parking: x.parking ?? null,
     epc: x.epc ?? null,

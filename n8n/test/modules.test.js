@@ -3,7 +3,7 @@ import { commute, commuteFlags, geocode, transitSummary } from "../src/commute.j
 import { contextBatchGet, readContext } from "../src/context.js";
 import { equalityQuery, fromFields, queryDocs, toFields } from "../src/firestore.js";
 import { describe as describeListing, extractionRequest, predictionRequest, readExtraction, readJson, readPrediction } from "../src/gemini.js";
-import { dateFromText, fingerprint, nextMonday, samePrice, splitPostcode, termFromText } from "../src/normalize.js";
+import { dateFromText, fingerprint, nextMonday, propertyTypeFromText, samePrice, splitPostcode, termFromText } from "../src/normalize.js";
 
 describe("normalize helpers", () => {
   it("parses terms and dates", () => {
@@ -40,6 +40,10 @@ describe("normalize helpers", () => {
     expect(samePrice(10000, 9997)).toBe(true);
     expect(samePrice(3500, 5000)).toBe(false);
     expect(samePrice(null, 5000)).toBe(true);
+  });
+  it("maps the portals' property types", () => {
+    expect(["semi-detached house", "detached house", "end of terrace house", "terraced house", "maisonette", "apartment", "flat", "house", "town house", null, "barn"].map(propertyTypeFromText))
+      .toEqual(["semi_detached", "detached", "terraced", "terraced", "maisonette", "flat", "flat", "house", "house", "unknown", "unknown"]);
   });
   it("plans for the next Monday", () => {
     expect(nextMonday(new Date("2026-11-08T10:00:00Z"))).toBe("20261109"); // Sunday

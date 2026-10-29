@@ -29,6 +29,9 @@ export const EXTRACTION_SCHEMA = {
           beds: nullable("integer"),
           baths: nullable("integer"),
           furnished: { type: "string", enum: ["furnished", "part", "unfurnished", "either", "unknown"] },
+          propertyType: { type: "string", enum: ["flat", "maisonette", "detached", "semi_detached", "terraced", "house", "unknown"] },
+          agent: nullable("string"),
+          priceReduced: nullable("boolean"),
           garden: nullable("boolean"),
           parking: nullable("boolean"),
           epc: nullable("string"),
@@ -38,7 +41,7 @@ export const EXTRACTION_SCHEMA = {
         required: [
           "url", "sourceId", "address", "postcode", "area", "price", "pricePeriod", "billsIncluded",
           "letType", "minTermMonths", "maxTermMonths", "availableFrom", "beds", "baths", "furnished",
-          "garden", "parking", "epc", "highlight", "photos",
+          "propertyType", "agent", "priceReduced", "garden", "parking", "epc", "highlight", "photos",
         ],
         additionalProperties: false,
       },
@@ -68,6 +71,9 @@ Return every distinct property the email advertises. Use null for anything the e
 - sourceId: the portal's numeric listing ID if visible in the URL, else null.
 - price/pricePeriod: the rent as stated, with "week" for pw/per week, "month" for pcm/per month, "unknown" if no period is stated.
 - letType: short_let, flexible, periodic (ordinary long let), corporate, licence, or unknown.
+- propertyType: flat (also apartment, penthouse, studio), maisonette, detached, semi_detached, terraced (also end of terrace, mews), house (other houses), or unknown.
+- agent: the letting agent or landlord named for this listing ("Marketed by …"), else null.
+- priceReduced: true if the email says the rent was reduced, else null.
 - availableFrom: ISO date (YYYY-MM-DD); "available now" means today's date, given below.
 - highlight: one short German phrase for the most notable feature (e.g. "Garten nach Süden"), or null.
 - photos: image URLs that belong to the listing (no logos or icons).`;
@@ -130,6 +136,11 @@ Die Kinder gehen auf die Deutsche Schule London (DSL), Douglas House, Petersham 
 Gebiete nach Priorität: Petersham und Ham (zu Fuß zur Schule), Richmond (Bus 65/371), North Kingston und East Sheen, Wimbledon/Southfields nur zum Vergleich.
 Seit Mai 2026 gibt es keine befristeten Mietverträge mehr: Short Lets, Licences, Flexible und Corporate Lets passen zur Laufzeit; reguläre unbefristete Miete ist günstiger, aber Vermieter wollen meist Langzeitmieter.`;
 
+const PROPERTY_LABEL = {
+  flat: "Wohnung", maisonette: "Maisonette", detached: "Freistehendes Haus", semi_detached: "Doppelhaushälfte",
+  terraced: "Reihenhaus", house: "Haus",
+};
+
 const SCALE = "1 = Nein, 2 = Eher nicht, 3 = Vielleicht, 4 = Interessant, 5 = Unbedingt";
 
 /** Short listing description for prompts (also used for the few-shot examples). */
@@ -141,7 +152,8 @@ export function describe(l) {
   ].filter(Boolean).join(", ") || "unbekannt";
   return [
     `Adresse: ${l.address}${l.area ? `, ${l.area}` : ""} (${l.postcode || "Postcode unbekannt"})`,
-    `Miete: ${l.priceMonthly != null ? `£${l.priceMonthly} pcm` : "unbekannt"}${l.billsIncluded ? ", Nebenkosten inklusive" : ""}`,
+    PROPERTY_LABEL[l.propertyType] ? `Objekt: ${PROPERTY_LABEL[l.propertyType]}` : null,
+    `Miete: ${l.priceMonthly != null ? `£${l.priceMonthly} pcm` : "unbekannt"}${l.billsIncluded ? ", Nebenkosten inklusive" : ""}${l.priceReduced ? " (gesenkt)" : ""}`,
     `Mietform: ${l.letType}${l.minTermMonths || l.maxTermMonths ? ` (${l.minTermMonths ?? "?"}–${l.maxTermMonths ?? "?"} Monate)` : ""}`,
     `Verfügbar ab: ${l.availableFrom ?? "unbekannt"}`,
     `Zimmer: ${l.beds ?? "?"} Schlafzimmer, ${l.baths ?? "?"} Bäder; Einrichtung: ${l.furnished}`,

@@ -132,6 +132,9 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | availableFrom | date? | |
 | beds, baths | number | |
 | furnished | enum | `furnished` \| `part` \| `unfurnished` \| `either` \| `unknown` |
+| propertyType | enum | `flat` \| `maisonette` \| `detached` \| `semi_detached` \| `terraced` \| `house` \| `unknown` (aus der Alert-Mail) |
+| agent | string? | Makler laut Alert-Mail („Marketed by …“) |
+| priceReduced | bool? | Alert meldet eine Preissenkung |
 | garden, parking | bool? | |
 | epc | string? | |
 | photos | string[] | Bild-URLs aus der Alert-Mail |

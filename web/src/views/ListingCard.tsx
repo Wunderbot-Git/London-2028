@@ -1,5 +1,5 @@
 // One listing per screen (spec §6.1). The prediction stays hidden until the listing is rated.
-import { useState } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   availableLabel,
   commuteLines,
@@ -11,6 +11,7 @@ import {
   letLabel,
   listingPhoto,
   photoCandidates,
+  propertyTypeLabel,
   postcodeDistrict,
   sourceLabel,
   weeklyPrice,
@@ -40,6 +41,7 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
   const commute = commuteLines(L.commute);
   const src = sourceLabel(L.source);
   const facts = [
+    propertyTypeLabel(L.propertyType),
     L.beds == null ? null : `${L.beds} Schlafzimmer`,
     L.baths == null ? null : `${L.baths} ${L.baths === 1 ? "Bad" : "Bäder"}`,
     L.garden == null ? null : L.garden ? "Garten" : "Kein Garten",
@@ -50,7 +52,7 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
 
   return (
     <article className="card enter">
-      <div className={photo ? "hero has-photo" : "hero"} style={{ ["--h" as string]: hue(L.id) }}>
+      <HeroLink url={L.url} className={photo ? "hero has-photo" : "hero"} style={{ ["--h" as string]: hue(L.id) }}>
         {photo && (
           // Shown straight from the portal (not copied); no referrer, so hotlink checks see a plain request.
           <img className="photo" src={photo} alt="" referrerPolicy="no-referrer" loading="eager" onError={() => setPhotoTry((n) => n + 1)} />
@@ -62,13 +64,20 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
           {L.address}
           {L.area ? `, ${L.area}` : ""}
         </div>
-      </div>
+      </HeroLink>
 
       <div>
         <p className="price num">
           {gbp(L.priceMonthly)}
           <span>pro Monat{L.billsIncluded ? ", alles inklusive" : ""}</span>
+          {L.priceReduced && <em className="chip">Preis gesenkt</em>}
         </p>
+        {L.url && (
+          // The alert mail has only the basics; photos, floor plan and details live on the portal.
+          <a className="full" href={L.url} target="_blank" rel="noopener noreferrer">
+            Alle Fotos und Details auf {src} ↗
+          </a>
+        )}
       </div>
 
       <div className="facts">
@@ -102,18 +111,18 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
               <dd>{L.highlight}</dd>
             </>
           )}
+          {L.agent && (
+            <>
+              <dt>Makler</dt>
+              <dd>{L.agent}</dd>
+            </>
+          )}
           <dt>Energieklasse</dt>
           <dd>{L.epc || "–"}</dd>
           <dt>Pro Woche</dt>
           <dd className="num">{gbp(weeklyPrice(L.priceMonthly))}</dd>
         </dl>
-        {L.url ? (
-          <a className="ext" href={L.url} target="_blank" rel="noopener noreferrer">
-            Inserat auf {src} ansehen ↗
-          </a>
-        ) : (
-          <span className="ext dim">{L.sample ? "Erfundenes Beispiel" : "Kein Link"}</span>
-        )}
+        {!L.url && <span className="ext dim">{L.sample ? "Erfundenes Beispiel" : "Kein Link"}</span>}
       </details>
 
       <section className="rate">
@@ -173,6 +182,16 @@ export function ListingCard({ listing: L, busy, onDone, onSkip }: Props) {
         )}
       </section>
     </article>
+  );
+}
+
+/** Photo tile; opens the listing on the portal when there is a link. */
+function HeroLink({ url, className, style, children }: { url?: string | null; className: string; style: CSSProperties; children: ReactNode }) {
+  if (!url) return <div className={className} style={style}>{children}</div>;
+  return (
+    <a className={`${className} hero-link`} style={style} href={url} target="_blank" rel="noopener noreferrer" aria-label="Inserat mit allen Fotos öffnen">
+      {children}
+    </a>
   );
 }
 

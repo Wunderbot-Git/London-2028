@@ -8,6 +8,7 @@ export const RATER_NAME: Record<Rater, string> = { philipp: "Philipp", manuela: 
 export type LetType = "short_let" | "flexible" | "periodic" | "corporate" | "licence" | "unknown";
 export type Furnished = "furnished" | "part" | "unfurnished" | "either" | "unknown";
 export type ListingStatus = "new" | "queued" | "reviewed" | "archived";
+export type PropertyType = "flat" | "maisonette" | "detached" | "semi_detached" | "terraced" | "house" | "unknown";
 
 export interface Commute {
   walkMin?: number | null;
@@ -46,6 +47,9 @@ export interface Listing {
   beds: number | null;
   baths: number | null;
   furnished: Furnished;
+  propertyType?: PropertyType | null;
+  agent?: string | null;
+  priceReduced?: boolean | null;
   garden?: boolean | null;
   parking?: boolean | null;
   epc?: string | null;

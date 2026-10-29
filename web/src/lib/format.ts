@@ -1,5 +1,5 @@
 // Turns data-model fields into the German labels the review card shows (spec §6.1).
-import type { Commute, Furnished, LetType, Listing } from "./types";
+import type { Commute, Furnished, LetType, Listing, PropertyType } from "./types";
 
 export const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
 
@@ -32,6 +32,18 @@ const FURNISHED_LABEL: Record<Furnished, string> = {
   unknown: "Unklar",
 };
 export const furnishedLabel = (f: Furnished) => FURNISHED_LABEL[f] ?? FURNISHED_LABEL.unknown;
+
+const PROPERTY_LABEL: Record<Exclude<PropertyType, "unknown">, string> = {
+  flat: "Wohnung",
+  maisonette: "Maisonette",
+  detached: "Freistehendes Haus",
+  semi_detached: "Doppelhaushälfte",
+  terraced: "Reihenhaus",
+  house: "Haus",
+};
+/** German name of the property type; null when the alert mail did not say. */
+export const propertyTypeLabel = (t: PropertyType | null | undefined) =>
+  t && t !== "unknown" ? PROPERTY_LABEL[t] : null;
 
 // Walking wins when it is reasonable; otherwise the faster of transit and car.
 const WALK_OK_MIN = 25;

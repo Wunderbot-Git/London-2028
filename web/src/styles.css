@@ -71,6 +71,10 @@ dt{color:var(--muted)}
 dd{margin:0;text-align:right;min-width:0}
 .ext{display:inline-block;margin-top:10px;color:var(--accent);font-size:15px;text-decoration:none}
 .ext.dim{color:var(--muted)}
+.hero-link{text-decoration:none;cursor:pointer}
+.hero-link:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.full{display:inline-block;margin-top:10px;color:var(--accent);font-size:16px;font-weight:600;text-decoration:none}
+.chip{display:inline-block;white-space:nowrap;font-style:normal;font-size:13px;font-weight:600;letter-spacing:0;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:2px 9px;margin-left:10px;vertical-align:middle}
 
 /* rating */
 .rate{display:grid;gap:18px;padding-top:6px}

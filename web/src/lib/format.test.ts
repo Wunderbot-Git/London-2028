@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commuteLines, deviationLabel, letLabel, listingPhoto, photoCandidates, postcodeDistrict, sourceLabel, weeklyPrice } from "./format";
+import { commuteLines, deviationLabel, letLabel, listingPhoto, photoCandidates, postcodeDistrict, propertyTypeLabel, sourceLabel, weeklyPrice } from "./format";
 import { isoWeek } from "./week";
 
 describe("commuteLines", () => {
@@ -76,5 +76,13 @@ describe("photoCandidates", () => {
     expect(photoCandidates("https://lid.zoocdn.com/645/430/abc.jpg")).toEqual(["https://lid.zoocdn.com/1024/768/abc.jpg", "https://lid.zoocdn.com/645/430/abc.jpg"]);
     expect(photoCandidates("https://media.onthemarket.com/properties/1/2/image-0-480x320.jpg")).toEqual(["https://media.onthemarket.com/properties/1/2/image-0-480x320.jpg"]);
     expect(photoCandidates(null)).toEqual([]);
+  });
+});
+
+describe("propertyTypeLabel", () => {
+  it("names the property type, nothing when unknown", () => {
+    expect(propertyTypeLabel("semi_detached")).toBe("Doppelhaushälfte");
+    expect(propertyTypeLabel("unknown")).toBeNull();
+    expect(propertyTypeLabel(undefined)).toBeNull();
   });
 });

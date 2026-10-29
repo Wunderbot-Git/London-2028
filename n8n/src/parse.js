@@ -146,6 +146,9 @@ export function readBlock(block) {
     garden: null,
     parking: null,
     availableText: null,
+    typeText: null,
+    agent: null,
+    priceReduced: null,
     photos: [...raw.matchAll(IMG_RE)].map((m) => m[1]).filter((src) => !NOT_A_PHOTO.test(src)),
   };
 
@@ -180,6 +183,13 @@ export function readBlock(block) {
   if (furn) out.furnishedText = furn[0];
   if (/\bgarden\b/i.test(lower)) out.garden = !/no\s+garden/i.test(lower);
   if (/\b(parking|driveway|garage)\b/i.test(lower)) out.parking = !/no\s+parking/i.test(lower);
+  // "3 bed maisonette to rent", "5 bedroom semi-detached house to rent", "5 Bed House"
+  const type = /\b\d+\s*bed(?:room)?s?\s+([a-z][a-z -]*?)\s+(?:to\s+rent|to\s+let|for\s+rent)\b/i.exec(text)
+    ?? /\b\d+\s*bed(?:room)?s?\s+((?:semi-detached\s+|detached\s+|terraced\s+|end\s+of\s+terrace\s+)?(?:house|flat|apartment|maisonette|penthouse|bungalow|cottage|town\s?house))\b/i.exec(text);
+  if (type) out.typeText = type[1].trim();
+  const agent = /marketed\s+by\s+([^\n]{2,80})/i.exec(text);
+  if (agent) out.agent = agent[1].trim();
+  if (/\breduced\b/i.test(text)) out.priceReduced = true;
   const avail = /available\s+(?:from\s+)?(now|immediately|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}|[A-Za-z]{3,9}\s+\d{4})/i.exec(text);
   if (avail) out.availableText = avail[1];
   return out;
@@ -195,7 +205,9 @@ export function parseMail(mail) {
   const from = mail.from?.value?.[0]?.address ?? mail.from?.text ?? String(mail.from ?? "");
   const source = sourceForSender(from);
   const text = mail.html ? htmlToText(mail.html) : String(mail.text ?? "");
-  const listings = listingBlocks(text).map(readBlock);
+  // OnTheMarket sends price cuts as their own alert ("Reduced price properties in …").
+  const reducedMail = /^reduced/i.test(String(mail.subject ?? "").trim());
+  const listings = listingBlocks(text).map(readBlock).map((l) => (reducedMail ? { ...l, priceReduced: true } : l));
   const needsLlm = !portalForSender(from) || listings.length === 0 || listings.some((l) => !isComplete(l));
   return {
     messageId: mail.id ?? mail.messageId ?? null,
