@@ -1,5 +1,6 @@
 // london-ingest (spec §5.3): alert mails in the AgentMail inbox → listings in Firestore.
 import { AGENTMAIL, FIRESTORE, GEMINI, GEMINI_URL, GOOGLE, TFL, workflowBuilder } from "./lib.mjs";
+import { notNullQuery } from "../src/firestore.js";
 
 // Settings the user edits once after import.
 const SETTINGS = {
@@ -153,7 +154,18 @@ export function ingest() {
 
   // Label the mails as processed. This branch sits below the main path, so with execution order
   // v1 it runs only after every listing of the run is saved; if anything fails, the mails stay
-  // unlabelled and the next poll tries again (saving is idempotent).
+  // unlabelled and the next poll tries again (saving is idempotent). A mail whose Gemini
+  // extraction failed is left unlabelled too, so it is read again on the next poll (the list
+  // covers 7 days, so a mail Gemini never reads drops out after a week).
+  const pickProcessed = codeNode("Pick processed mails", [], `
+  const failed = new Set();
+  if ($('Read extraction').isExecuted) {
+    for (const item of $('Read extraction').all()) if (item.json.extractionError) failed.add(item.json.messageId);
+  }
+  return $input.all()
+    .filter((item) => !failed.has(item.json.messageId))
+    .map((item) => ({ json: { messageId: item.json.messageId } }));
+  `);
   const markMails = http("Mark mails processed", {
     method: "PATCH",
     url: `=${INBOX}/{{ encodeURIComponent($json.messageId) }}`,
@@ -161,7 +173,7 @@ export function ingest() {
     credentials: AGENTMAIL,
     auth: "generic",
   });
-  connect(parse, markMails);
+  chain(parse, pickProcessed, markMails);
   connect(needsGemini, buildExtraction, 0);
   connect(needsGemini, useParser, 1);
   chain(buildExtraction, geminiExtract, readExtraction);
@@ -173,6 +185,7 @@ export function ingest() {
   const ctx = $('Context').first().json;
   const s = $('Settings').first().json;
   const seen = new Set();
+  const firstByFingerprint = new Map(); // same house from two portals in one run
   const out = [];
   for (const item of $input.all()) {
     const mail = item.json;
@@ -186,6 +199,9 @@ export function ingest() {
       if (l.priceMonthly == null && l.beds == null) continue;
       if (seen.has(l.id)) continue;
       seen.add(l.id);
+      const first = l.fingerprint ? firstByFingerprint.get(l.fingerprint) : null;
+      if (first && first.source !== l.source && samePrice(first.priceMonthly, l.priceMonthly)) l._dupInRun = first.id;
+      else if (l.fingerprint && !first) firstByFingerprint.set(l.fingerprint, l);
       const district = l.postcode.split(' ')[0];
       l._geoUrl = l._postcodeFull
         ? 'https://api.postcodes.io/postcodes/' + encodeURIComponent(l._postcodeFull)
@@ -212,16 +228,29 @@ export function ingest() {
     auth: "predefined",
   });
 
-  const classify = codeNode("Classify", ["firestore"], `
+  const classify = codeNode("Classify", ["firestore", "normalize"], `
+  const originalOf = new Map(); // listing id → id of the original it duplicates (this run)
   return $input.all().map((dup, i) => {
     const l = $('Normalize listings').itemMatching(i).json;
     const look = $('Lookup by id').itemMatching(i).json;
     if (look.statusCode === 200) return { json: { ...l, _kind: 'seen' } };
     if (look.statusCode !== 404) throw new Error(\`Firestore lookup \${l.id}: \${look.statusCode} \${JSON.stringify(look.body).slice(0, 300)}\`);
     if (dup.json.statusCode !== 200) throw new Error(\`Firestore duplicate query \${l.id}: \${dup.json.statusCode}\`);
-    const matches = queryDocs(dup.json.body).filter((d) => d.id !== l.id);
+    // An empty fingerprint (no street or district) never matches; rents far apart mean two different homes.
+    const matches = l.fingerprint
+      ? queryDocs(dup.json.body).filter((d) => d.id !== l.id && samePrice(d.priceMonthly, l.priceMonthly))
+      : [];
     const original = matches.find((d) => !d.duplicateOf) ?? matches[0];
-    if (original) return { json: { ...l, _kind: 'duplicate', duplicateOf: original.duplicateOf ?? original.id, _original: original } };
+    if (original) {
+      const id = original.duplicateOf ?? original.id;
+      originalOf.set(l.id, id);
+      return { json: { ...l, _kind: 'duplicate', duplicateOf: id, _original: original } };
+    }
+    if (l._dupInRun) {
+      const id = originalOf.get(l._dupInRun) ?? l._dupInRun;
+      originalOf.set(l.id, id);
+      return { json: { ...l, _kind: 'duplicate', duplicateOf: id } };
+    }
     return { json: { ...l, _kind: 'new' } };
   });
   `);
@@ -393,11 +422,74 @@ export function ingest() {
   connect(notifyCheck, notify, 0);
 
   // ---------------------------------------------------------------------------------------------
+  // 8 · Listings saved without a prediction (Gemini failed at the time): score them now.
+  // Hangs off Context below everything else, so with execution order v1 it runs last and only in
+  // runs with new mails. Only new listings carry a predictionError field (duplicates do not), so
+  // one filter finds them without a composite index; up to 20 per run.
+
+  const findUnscored = http("Find unscored", {
+    method: "POST",
+    url: `${FIRESTORE}:runQuery`,
+    body: JSON.stringify(notNullQuery("listings", "predictionError", 20)),
+    credentials: GOOGLE,
+    auth: "predefined",
+  });
+
+  const planRescore = codeNode("Plan rescore", ["firestore", "gemini"], `
+  const ctx = $('Context').first().json;
+  const r = $input.first().json;
+  if (r.statusCode !== 200) throw new Error(\`Firestore unscored: \${r.statusCode} \${JSON.stringify(r.body).slice(0, 300)}\`);
+  return queryDocs(r.body).map((l) => ({ json: { id: l.id, _geminiRequest: predictionRequest(l, ctx) } }));
+  `);
+
+  const geminiRescore = http("Gemini rescore", {
+    method: "POST",
+    url: GEMINI_URL,
+    body: "={{ JSON.stringify($json._geminiRequest) }}",
+    credentials: GEMINI,
+    auth: "generic",
+  });
+
+  // Failed answers are dropped here; the listing keeps its predictionError and is tried next run.
+  const readRescore = codeNode("Read rescore", ["firestore", "gemini"], `
+  const ctx = $('Context').first().json;
+  const out = [];
+  $input.all().forEach((item, i) => {
+    const { id } = $('Plan rescore').itemMatching(i).json;
+    try {
+      const prediction = readPrediction(item.json.body, ctx.profile?.version);
+      out.push({ json: { id, fields: toFields({ prediction, predictionError: null }) } });
+    } catch (e) {
+      // visible in the execution, nothing written
+    }
+  });
+  return out;
+  `);
+
+  const savePrediction = node(
+    "Save prediction",
+    "n8n-nodes-base.httpRequest",
+    4.2,
+    {
+      method: "PATCH",
+      url: `${FIRESTORE}/listings/{{ $json.id }}?updateMask.fieldPaths=prediction&updateMask.fieldPaths=predictionError`,
+      authentication: "predefinedCredentialType",
+      nodeCredentialType: "googleApi",
+      sendBody: true,
+      specifyBody: "json",
+      jsonBody: "={{ JSON.stringify({ fields: $json.fields }) }}",
+      options: {},
+    },
+    { credentials: GOOGLE },
+  );
+  chain(context, findUnscored, planRescore, geminiRescore, readRescore, savePrediction);
+
+  // ---------------------------------------------------------------------------------------------
   // Layout: left to right along the main path, branches below.
 
   const layout = {
     "Every 15 minutes": [0, 0], Settings: [220, 0], "List mails": [440, 0], "Pick new mails": [660, 0], "Get mail": [880, 0],
-    "Mark mails processed": [1980, 480], "Load profile": [1100, 0], "Plan context fetch": [1320, 0],
+    "Pick processed mails": [1980, 480], "Mark mails processed": [2200, 480], "Load profile": [1100, 0], "Plan context fetch": [1320, 0],
     "Fetch context": [1540, 0], Context: [1760, 0], "Parse alert mails": [1980, 0], "Needs Gemini?": [2200, 0],
     "Build extraction request": [2420, -160], "Gemini extract": [2640, -160], "Read extraction": [2860, -160],
     "Use parser results": [2640, 120], "Normalize listings": [3080, 0], "Lookup by id": [3300, 0],
@@ -406,6 +498,8 @@ export function ingest() {
     "Build prediction request": [5060, -200], "Gemini predict": [5280, -200], "Build listing doc": [5500, -200],
     "Build duplicate doc": [5500, 40], "Touch lastSeenAt": [4180, 260],
     "Save listing": [5720, -80], "Hunt phase and score ≥ 4?": [5940, -80], "Notify (channel open)": [6160, -160],
+    "Find unscored": [1980, 720], "Plan rescore": [2200, 720], "Gemini rescore": [2420, 720], "Read rescore": [2640, 720],
+    "Save prediction": [2860, 720],
   };
 
   return finish("london-ingest", layout);

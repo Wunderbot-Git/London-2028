@@ -27,6 +27,8 @@ export function startMock(seed, { mails = [] } = {}) {
         const q = body.structuredQuery;
         const coll = q.from[0].collectionId;
         let rows = [...docs.entries()].filter(([p]) => p.startsWith(`${coll}/`) && !p.slice(coll.length + 1).includes("/"));
+        const u = q.where?.unaryFilter;
+        if (u?.op === "IS_NOT_NULL") rows = rows.filter(([, fields]) => fromValue(fields[u.field.fieldPath]) != null);
         const f = q.where?.fieldFilter;
         const value = (fields) => fromValue(fields[f.field.fieldPath]);
         if (f?.op === "EQUAL") rows = rows.filter(([, fields]) => JSON.stringify(value(fields)) === JSON.stringify(fromValue(f.value)));
@@ -85,6 +87,7 @@ export function startMock(seed, { mails = [] } = {}) {
         };
         return reply({ scores: ids.map((id) => ({ id, score: system.includes("MOCK-REGEL") ? mean(id) : 5 })) });
       }
+      if (props.listings && user.includes("MOCK-FAIL")) return send(503, { error: { code: 503, message: "Mock: model overloaded", status: "UNAVAILABLE" } });
       if (props.listings) {
         return reply({ listings: [{
           url: "https://www.example-lettings.co.uk/short-lets/ham-common-family-home", sourceId: null,

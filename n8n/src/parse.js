@@ -7,6 +7,8 @@ export const PORTALS = [
   { source: "rightmove", sender: /rightmove\.co\.uk/i, id: /rightmove\.co\.uk\/properties\/(\d{6,})/i },
   { source: "zoopla", sender: /zoopla\.co\.uk/i, id: /zoopla\.co\.uk\/to-rent\/details\/(\d{6,})/i },
   { source: "openrent", sender: /openrent\.co\.uk/i, id: /openrent\.co\.uk\/(?:property-to-rent\/[^\s"'?#]*\/)?(\d{6,})(?=[/?#"'\s]|$)/i },
+  // Only /details/<id>/ opens the listing; /agents/contact/<id>/ in the same block is the agent form.
+  { source: "onthemarket", sender: /onthemarket\.com/i, id: /onthemarket\.com\/details\/(\d{6,})/i },
 ];
 
 export function portalForSender(from) {

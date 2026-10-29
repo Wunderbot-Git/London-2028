@@ -64,6 +64,18 @@ describe("parseMail", () => {
     expect(m.listings[0]).toMatchObject({ sourceId: "2345678", price: 6200, beds: 3, billsIncluded: true, availableText: "1st January 2028" });
   });
 
+  it("reads OnTheMarket cards (real layout) without asking Gemini", () => {
+    const m = parseMail(mail("onthemarket", "OnTheMarket Property Alerts <property-alerts@mail.onthemarket.com>"));
+    expect(m.source).toBe("onthemarket");
+    expect(m.needsLlm).toBe(false);
+    expect(m.listings.map((l) => [l.sourceId, l.price, l.pricePeriod, l.beds, l.address, l.postcode])).toEqual([
+      ["21000001", 4200, "month", 5, "Kings Road, Kingston Upon Thames, KT2", "KT2"],
+      ["21000002", 8500, "month", 3, "Church Road, Wimbledon Village, London, SW19", "SW19"],
+    ]);
+    expect(m.listings[0].url).toBe("https://www.onthemarket.com/details/21000001/?r-alert-email-id=x&utm_source=property_alert");
+    expect(m.listings[0].photos).toEqual(["http://media.onthemarket.com/properties/21000001/1/image-0-480x320.jpg"]);
+  });
+
   it("sends agency newsletters to the Gemini fallback", () => {
     const m = parseMail(mail("agency", "news@example-lettings.co.uk"));
     expect(m.source).toBe("agency:example-lettings.co.uk");

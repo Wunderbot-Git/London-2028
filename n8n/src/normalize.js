@@ -98,7 +98,8 @@ export function fromParser(l, today) {
 /** "tw10 7ah" → { full: "TW10 7AH", district: "TW10", sector: "TW10 7" }. */
 export function splitPostcode(pc) {
   if (!pc) return { full: null, district: null, sector: null };
-  const m = /^([A-Z]{1,2}\d[A-Z\d]?)\s*(?:(\d)([A-Z]{2}))?$/.exec(pc.trim().toUpperCase());
+  // Portals send the full postcode, the sector ("TW11 8") or only the district ("TW11").
+  const m = /^([A-Z]{1,2}\d[A-Z\d]?)\s*(?:(\d)([A-Z]{2})?)?$/.exec(pc.trim().toUpperCase());
   if (!m) return { full: null, district: null, sector: null };
   return {
     full: m[3] ? `${m[1]} ${m[2]}${m[3]}` : null,
@@ -113,21 +114,40 @@ export function priceMonthly(price, period) {
   return period === "week" ? Math.round((price * 52) / 12) : Math.round(price);
 }
 
-/** Address normalised for duplicate detection across portals. */
+// Street words that mark the street part of an address ("Kings Road, Kingston Upon Thames, KT2").
+const STREET = /\b(road|rd|street|st|avenue|ave|lane|ln|close|crescent|cres|drive|dr|gardens|gdns|grove|place|pl|square|sq|terrace|way|walk|court|ct|mews|park|hill|row|parade|green|vale|rise|mount|common|gate|yard|wharf|chase|view|end|side)\b/;
+const SHORT = [[/\b(road|rd)\b/g, "rd"], [/\b(street|st)\b/g, "st"], [/\b(avenue|ave)\b/g, "ave"], [/\b(lane|ln)\b/g, "ln"],
+  [/\b(crescent|cres)\b/g, "cres"], [/\b(drive|dr)\b/g, "dr"], [/\b(gardens|gdns)\b/g, "gdns"], [/\b(place|pl)\b/g, "pl"],
+  [/\b(square|sq)\b/g, "sq"], [/\b(court|ct)\b/g, "ct"]];
+
+/**
+ * Key for duplicate detection across portals: street + postcode district + bedrooms.
+ * Portals name the place differently ("Gainsborough Road, Kew TW9" / "Gainsborough Road,
+ * Richmond, TW9"), so only the street counts. Without a recognisable street there is no key
+ * (empty string) and the listing is never treated as a duplicate.
+ */
 export function fingerprint(address, district, beds) {
-  const a = (address ?? "")
+  const parts = (address ?? "")
     .toLowerCase()
-    .replace(/\b(flat|apartment|apt|unit)\s*\w+\b/g, "")
-    .replace(/\b[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}\b/g, "")
-    .replace(/\b(road|rd)\b/g, "rd")
-    .replace(/\b(street|st)\b/g, "st")
-    .replace(/\b(avenue|ave)\b/g, "ave")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(" ")
-    .filter((w) => w && !/^(london|surrey|richmond upon thames|uk)$/.test(w))
-    .join(" ");
-  return `${a}|${(district ?? "").toLowerCase()}|${beds ?? ""}`;
+    .split(/,|\s[-–]\s/)
+    .map((p) => p
+      .replace(/\b(flat|apartment|apt|unit|plot)\s*[\w-]+/g, " ")
+      .replace(/\b[a-z]{1,2}\d[a-z\d]?(\s*\d([a-z]{2})?)?\b/g, " ")
+      .replace(/\b\d+[a-z]?\b/g, " ")
+      .replace(/[^a-z ]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter(Boolean);
+  let street = parts.find((p) => STREET.test(p)) ?? "";
+  for (const [re, short] of SHORT) street = street.replace(re, short);
+  if (!street || !district) return "";
+  return `${street}|${district.toLowerCase()}|${beds ?? ""}`;
+}
+
+/** Same house only if the rents are close; two flats in one street can share street, district and bedrooms. */
+export function samePrice(a, b, tolerance = 0.2) {
+  if (a == null || b == null) return true;
+  return Math.abs(a - b) <= tolerance * Math.max(a, b);
 }
 
 /** Firestore document ID: stable per portal listing so re-sent alerts update instead of duplicating. */

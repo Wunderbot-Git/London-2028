@@ -3,7 +3,7 @@ import { commute, commuteFlags, geocode, transitSummary } from "../src/commute.j
 import { contextBatchGet, readContext } from "../src/context.js";
 import { equalityQuery, fromFields, queryDocs, toFields } from "../src/firestore.js";
 import { describe as describeListing, extractionRequest, predictionRequest, readExtraction, readJson, readPrediction } from "../src/gemini.js";
-import { dateFromText, fingerprint, nextMonday, splitPostcode, termFromText } from "../src/normalize.js";
+import { dateFromText, fingerprint, nextMonday, samePrice, splitPostcode, termFromText } from "../src/normalize.js";
 
 describe("normalize helpers", () => {
   it("parses terms and dates", () => {
@@ -17,11 +17,29 @@ describe("normalize helpers", () => {
   it("splits postcodes", () => {
     expect(splitPostcode("tw10 7ah")).toEqual({ full: "TW10 7AH", district: "TW10", sector: "TW10 7" });
     expect(splitPostcode("SW14")).toEqual({ full: null, district: "SW14", sector: "SW14" });
+    expect(splitPostcode("TW11 8")).toEqual({ full: null, district: "TW11", sector: "TW11 8" });
     expect(splitPostcode("nonsense")).toEqual({ full: null, district: null, sector: null });
   });
   it("matches the same house across portals", () => {
     expect(fingerprint("Flat 2, Forge Lane, Petersham, TW10 7AB", "TW10", 3)).toBe(fingerprint("Forge Lane, Petersham", "TW10", 3));
     expect(fingerprint("Petersham Road", "TW10", 3)).toBe(fingerprint("Petersham Rd", "TW10", 3));
+  });
+  it("ignores how portals name the place (cases from the first real alerts)", () => {
+    expect(fingerprint("Gainsborough Road, Kew TW9", "TW9", 3)).toBe(fingerprint("Gainsborough Road, Richmond, TW9", "TW9", 3));
+    expect(fingerprint("Cottenham Park Road, West Wimbledon SW20", "SW20", 5)).toBe(fingerprint("Cottenham Park Road, London SW20", "SW20", 5));
+    expect(fingerprint("Eversley Park, Wimbledon Common, London ", "SW19", 5)).toBe(fingerprint("Eversley Park, Wimbledon Common, London, SW19", "SW19", 5));
+    expect(fingerprint("Hamlet Gardens - Flat 208A, King Street, London, W6", "W6", 3)).toBe("hamlet gdns|w6|3");
+    expect(fingerprint("12 Allbrook Close, Teddington", "TW11", 4)).toBe("allbrook close|tw11|4");
+  });
+  it("has no key without street or district, and keeps different houses apart", () => {
+    expect(fingerprint("London, London, SW18", "SW18", 3)).toBe("");
+    expect(fingerprint("Hammersmith, London. W6", "W6", 3)).toBe("");
+    expect(fingerprint("Kings Road", null, 3)).toBe("");
+    expect(fingerprint("Kings Road, Richmond", "TW10", 5)).not.toBe(fingerprint("Kings Road, Kingston", "KT2", 5));
+    expect(fingerprint("Kings Road, Richmond", "TW10", 5)).not.toBe(fingerprint("Kings Road, Richmond", "TW10", 4));
+    expect(samePrice(10000, 9997)).toBe(true);
+    expect(samePrice(3500, 5000)).toBe(false);
+    expect(samePrice(null, 5000)).toBe(true);
   });
   it("plans for the next Monday", () => {
     expect(nextMonday(new Date("2026-11-08T10:00:00Z"))).toBe("20261109"); // Sunday

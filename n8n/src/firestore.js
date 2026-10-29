@@ -50,6 +50,17 @@ export function equalityQuery(collection, field, value, limit = 5) {
   };
 }
 
+/** documents:runQuery body for `collection where field is set and not null`. */
+export function notNullQuery(collection, field, limit = 20) {
+  return {
+    structuredQuery: {
+      from: [{ collectionId: collection }],
+      where: { unaryFilter: { field: { fieldPath: field }, op: "IS_NOT_NULL" } },
+      limit,
+    },
+  };
+}
+
 /** documents from a runQuery response (array of { document?, readTime }). */
 export function queryDocs(body) {
   return (Array.isArray(body) ? body : [])

@@ -20,15 +20,16 @@ npm run build     # schreibt london-ingest.json und london-weekly.json
 |---|---|---|
 | 1 | Every 15 minutes, List mails, Pick new mails, Get mail | alle 15 Min. das AgentMail-Postfach `london@agentmail.to` abfragen (Mails der letzten 7 Tage ohne Label `london-processed`) und jede neue Mail vollständig abrufen. Gibt es nichts Neues, endet der Lauf hier, ohne Firestore oder Gemini zu berühren |
 | – | Settings, Load profile, Fetch context, Context | einmal pro Lauf: `config/criteria`, neuestes `profiles`-Dokument, Few-Shot-Inserate mit beiden Bewertungen |
-| 2–3 | Parse alert mails | Portal am Absender erkennen, Inserate an den Links erkennen (auch hinter Tracking-Links), Preis, Zimmer, Adresse, Mietform usw. per Muster lesen |
+| 2–3 | Parse alert mails | Portal am Absender erkennen (Rightmove, Zoopla, OpenRent, OnTheMarket), Inserate an den Links erkennen (auch hinter Tracking-Links), Preis, Zimmer, Adresse, Mietform usw. per Muster lesen |
 | 4 | Needs Gemini? → Gemini extract | nur wenn der Parser nichts oder Unvollständiges findet, und immer bei Agentur-Mails. Gemini liefert festes JSON (Structured Output). Scheitert der Aufruf, bleiben die vollständig geparsten Inserate erhalten und der Fehler steht in der Ausführung |
 | 5 | Normalize listings | Preis auf pcm, Mietform und Einrichtung als Enum, Postcode-Sektor, Gebiet, Fingerprint, Flags (`term_too_short`, `over_budget`, `few_beds`, `periodic_risk`) |
-| 6 | Lookup by id, Find duplicate, Classify, Route by kind | ID = `<quelle>-<portal-id>`. Bekannt → nur `lastSeenAt`. Gleicher Fingerprint aus anderem Portal → als Duplikat (`duplicateOf`, `status: archived`) ohne TfL/Gemini. Sonst neu |
+| 6 | Lookup by id, Find duplicate, Classify, Route by kind | ID = `<quelle>-<portal-id>`. Bekannt → nur `lastSeenAt`. Gleicher Fingerprint (Straße + Postcode-Bezirk + Schlafzimmer, Ortsnamen zählen nicht) und Miete höchstens 20 % auseinander → als Duplikat (`duplicateOf`, `status: archived`) ohne TfL/Gemini, auch wenn beide Portale im selben Lauf kommen. Ohne erkennbare Straße kein Fingerprint, also nie Duplikat. Sonst neu |
 | 7 | Geocode, Plan commute, TfL walking, TfL transit | postcodes.io für die Koordinaten, TfL Journey Planner zur DSL (TW10 7AH), Ankunft Montag 08:15. Flags `too_far` (über `maxCommuteMin`) und `commute_approx` (nur Postcode-Bezirk bekannt) |
 | 8 | Build prediction request, Gemini predict | Profilregeln, harte Filter und Few-Shot-Beispiele → `{ score, rationale }`. Ohne Antwort wird das Inserat trotzdem gespeichert (`prediction: null`, `predictionError`) |
 | 9 | Save listing | `listings/{id}` in Firestore |
 | 10 | Hunt phase and score ≥ 4? → Notify | nur wenn `config/criteria.phase == "hunt"`. Der Kanal ist noch offen (Spec §8 Punkt 7); der Node ist ein Platzhalter |
-| – | Mark mails processed | setzt in AgentMail das Label `london-processed`. Läuft erst, wenn alle Inserate des Laufs gespeichert sind; bricht vorher etwas ab, bleiben die Mails unmarkiert und werden beim nächsten Lauf erneut verarbeitet (Speichern ist idempotent) |
+| – | Pick processed mails, Mark mails processed | setzt in AgentMail das Label `london-processed`. Läuft erst, wenn alle Inserate des Laufs gespeichert sind; bricht vorher etwas ab, bleiben die Mails unmarkiert und werden beim nächsten Lauf erneut verarbeitet (Speichern ist idempotent). Mails, bei denen die Gemini-Extraktion gescheitert ist, bleiben ebenfalls unmarkiert und werden erneut versucht, längstens 7 Tage |
+| – | Find unscored, Plan rescore, Gemini rescore, Read rescore, Save prediction | läuft zuletzt und nur in Läufen mit neuen Mails: bis zu 20 Inserate, die ohne Prognose gespeichert wurden (Feld `predictionError` gesetzt), bekommen sie jetzt; danach ist `predictionError` leer. Scheitert Gemini wieder, bleibt alles, wie es war |
 
 TfL plant keine Autofahrten, deshalb bleibt `commute.driveMin` leer.
 
@@ -75,9 +76,9 @@ Ein zweiter Lauf in derselben Woche baut keinen zweiten Stapel und rechnet kein 
 
 ## Tests
 
-- `npm test`: Unit-Tests der Logik in `src/` mit **synthetischen** Alert-Mails (`test/fixtures/`). Echte Mails gibt es noch nicht (Spec §9 Schritt 2). Sobald welche ankommen, anonymisierte Kopien als Fixtures ablegen und `src/parse.js` daran nachschärfen.
+- `npm test`: Unit-Tests der Logik in `src/` mit Alert-Mails in `test/fixtures/`: synthetische für Rightmove, Zoopla, OpenRent und Agenturen, eine anonymisierte echte für OnTheMarket. Weitere echte Mails als anonymisierte Fixtures ablegen und `src/parse.js` daran nachschärfen.
 - `test/e2e/`: führt die gebauten Workflows in einem echten n8n aus, mit einem Mock-Server für Firestore, Gemini, TfL und postcodes.io.
-  - `ingest.mjs` prüft Parser-Pfad, Gemini-Fallback, Duplikat, bekanntes Inserat, Prognose mit Profil und Few-Shot und die Benachrichtigung in der Jagd-Phase.
+  - `ingest.mjs` prüft Parser-Pfad (auch OnTheMarket), Gemini-Fallback, eine nicht markierte Mail nach gescheiterter Extraktion, Duplikat im selben Lauf und bei abweichender Miete, Nachbewertung, Duplikat, bekanntes Inserat, Prognose mit Profil und Few-Shot und die Benachrichtigung in der Jagd-Phase.
   - `weekly.mjs` prüft Stapel (Größe, Mischung, ohne Duplikat, untypisches Inserat dabei), Abschluss der Vorwoche mit Kennzahlen, Phase-2-Prüfung, Benachrichtigung, Profil-Update mit Backtest und einen zweiten Lauf ohne Wirkung.
 
   Braucht ein separat installiertes n8n (Node 24):
