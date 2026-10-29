@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 let env;
 const P = "philipp@example.com";
@@ -74,5 +74,31 @@ describe("batches", () => {
     await assertSucceeds(updateDoc(doc(db(P), "batches/2026-W45"), { "completed.philipp": serverTimestamp() }));
     await assertFails(updateDoc(doc(db(P), "batches/2026-W45"), { "completed.manuela": serverTimestamp() }));
     await assertFails(updateDoc(doc(db(P), "batches/2026-W45"), { listingIds: [] }));
+  });
+});
+
+describe("push subscriptions", () => {
+  const H = "0123456789abcdef0123456789abcdef";
+  const sub = (rater, extra = {}) => ({
+    rater, endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: "BPk", auth: "xyz" },
+    userAgent: "test", createdAt: serverTimestamp(), ...extra,
+  });
+  it("lets each person register and remove their own devices", async () => {
+    await assertSucceeds(setDoc(doc(db(P), `pushSubscriptions/philipp_${H}`), sub("philipp")));
+    await assertSucceeds(getDoc(doc(db(P), `pushSubscriptions/philipp_${H}`)));
+    await assertSucceeds(deleteDoc(doc(db(P), `pushSubscriptions/philipp_${H}`)));
+  });
+  it("keeps the other person's devices out of reach", async () => {
+    await assertFails(setDoc(doc(db(P), `pushSubscriptions/manuela_${H}`), sub("manuela")));
+    await assertFails(setDoc(doc(db(P), `pushSubscriptions/philipp_${H}`), sub("manuela")));
+    await assertSucceeds(setDoc(doc(db(M), `pushSubscriptions/manuela_${H}`), sub("manuela")));
+    await assertFails(getDoc(doc(db(P), `pushSubscriptions/manuela_${H}`)));
+    await assertFails(deleteDoc(doc(db(P), `pushSubscriptions/manuela_${H}`)));
+  });
+  it("validates the stored fields", async () => {
+    await assertFails(setDoc(doc(db(P), `pushSubscriptions/philipp_${H}`), sub("philipp", { endpoint: "http://insecure" })));
+    await assertFails(setDoc(doc(db(P), `pushSubscriptions/philipp_${H}`), sub("philipp", { extra: 1 })));
+    await assertFails(setDoc(doc(db(P), `pushSubscriptions/philipp_x`), sub("philipp")));
+    await assertFails(setDoc(doc(db("x@example.com"), `pushSubscriptions/philipp_${H}`), sub("philipp")));
   });
 });

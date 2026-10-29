@@ -48,6 +48,26 @@ service cloud.firestore {
         && request.resource.data.completed[me()] == request.time;
     }
 
+    // Web Push subscriptions of each person's devices: pushSubscriptions/{rater}_{hash of endpoint}.
+    // Only the notify Cloud Function (Admin SDK) reads all of them to send.
+    match /pushSubscriptions/{subId} {
+      function validSub() {
+        return subId.matches(me() + '_[0-9a-f]{32}')
+          && request.resource.data.rater == me()
+          && request.resource.data.keys().hasOnly(['rater', 'endpoint', 'keys', 'userAgent', 'createdAt'])
+          && request.resource.data.endpoint is string
+          && request.resource.data.endpoint.matches('https://.+')
+          && request.resource.data.endpoint.size() <= 1000
+          && request.resource.data.keys is map
+          && request.resource.data.keys.keys().hasOnly(['p256dh', 'auth'])
+          && request.resource.data.userAgent is string && request.resource.data.userAgent.size() <= 300
+          && request.resource.data.createdAt == request.time;
+      }
+      allow read, delete: if signedIn() && resource.data.rater == me();
+      allow create: if signedIn() && validSub();
+      allow update: if signedIn() && resource.data.rater == me() && validSub();
+    }
+
     match /ratings/{ratingId} {
       // Both may read all ratings; the app shows the other person's only in the weekly summary.
       allow read: if signedIn();
