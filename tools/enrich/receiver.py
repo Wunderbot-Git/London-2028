@@ -44,6 +44,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, "LWR-STOPPED")
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
+        if u.path == "/ok":
+            lid = parse_qs(u.query).get("id", [""])[0]
+            self.reply(200, self.server.last.get(lid, "LWR-UNKNOWN"))
+            return
         if u.path != "/save":
             self.reply(404, "LWR-UNKNOWN")
             return
@@ -60,11 +64,19 @@ class Handler(BaseHTTPRequestHandler):
             doc["items"] = [it for it in doc["items"] if it["id"] != lid] + [{"id": lid, "data": data}]
             with open(OUT, "w") as f:
                 json.dump(doc, f, ensure_ascii=False, indent=1)
-        self.reply(200, f"LWR-OK {lid} photos={len(data.get('photos') or [])} baths={data.get('baths')} letAgreed={data.get('letAgreed')}")
+        # Redirect to a short address so the long data URL does not linger in the tab.
+        summary = f"LWR-OK {lid} photos={len(data.get('photos') or [])} baths={data.get('baths')} letAgreed={data.get('letAgreed')}"
+        self.server.last[lid] = summary
+        self.send_response(303)
+        self.send_header("Location", f"/ok?id={lid}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def log_message(self, *args):
         pass
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server.last = {}
+    server.serve_forever()
