@@ -110,7 +110,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 
 **Zweiter Workflow „london-weekly“** (sonntags):
 1. Review-Stapel der Woche zusammenstellen (siehe 6.2)
-2. Benachrichtigung „Review bereit“ an beide
+2. Benachrichtigung „Review bereit“ an beide: Web-Push der App, ausgelöst vom neuen Dokument `batches/{week}` (Cloud Function `notify/`, entschieden 29.10.2026)
 3. Nach Abschluss: Präferenzprofil neu ableiten (siehe 6.3)
 
 ### 5.4 Firestore-Datenmodell
@@ -175,7 +175,9 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | metrics | map | `{ mae, hitRateWithin1, n }` |
 | confirmedBy | string[] | wer die Regeln abgenickt hat |
 
-**`batches/{week}`**: `{ week, listingIds[], createdAt, completed: { philipp?: ts, manuela?: ts } }`
+**`batches/{week}`**: `{ week, listingIds[], createdAt, completed: { philipp?: ts, manuela?: ts }, notifiedAt? }` (`notifiedAt` setzt `notify/` nach dem Push)
+
+**`pushSubscriptions/{rater}_{hash}`**: `{ rater, endpoint, keys: { p256dh, auth }, userAgent, createdAt }`. Ein Eintrag pro Gerät, angelegt über „Mitteilungen“ in der App; jede Person sieht und löscht nur ihre eigenen.
 
 **`config/criteria`**: Startwerte für Budget, Mindestzimmer, maximalen Schulweg und Gebietsliste.
 
@@ -242,7 +244,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 | 4 | ~~Agent-Mailkonto angelegt? Adresse?~~ Erledigt: `london@agentmail.to` (AgentMail) | Philipp |
 | 5 | n8n von außen per HTTPS erreichbar? MCP-Zugang aktivierbar? | Philipp |
 | 6 | GCP-Projekt: neu oder bestehendes? | Philipp |
-| 7 | Benachrichtigungskanal für Phase 2 und „Review bereit“ (Push der Web-App, Mail, WhatsApp) | offen |
+| 7 | ~~Benachrichtigungskanal für „Review bereit“~~ Erledigt: Web-Push der installierten App (29.10.2026). Phase 2 offen | Philipp |
 | 8 | Bewertet Manuela von Anfang an mit? | Philipp & Manuela |
 | 9 | Hotlinking der Inseratsfotos aus Alert-Mails zulässig, oder nur Link? | prüfen |
 

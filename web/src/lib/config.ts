@@ -4,6 +4,8 @@ import type { FirebaseOptions } from "firebase/app";
 
 export interface AppConfig {
   firebase: FirebaseOptions | null;
+  /** Public VAPID key for Web Push; null = no push button. */
+  vapidPublicKey: string | null;
 }
 
 declare global {
@@ -15,5 +17,5 @@ declare global {
 export function appConfig(): AppConfig {
   const c = window.__LWR_CONFIG__ ?? {};
   const forceDemo = new URLSearchParams(location.search).has("demo");
-  return { firebase: forceDemo ? null : (c.firebase ?? null) };
+  return { firebase: forceDemo ? null : (c.firebase ?? null), vapidPublicKey: c.vapidPublicKey ?? null };
 }

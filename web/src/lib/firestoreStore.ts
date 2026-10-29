@@ -14,6 +14,7 @@ import {
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -26,6 +27,7 @@ import {
   updateDoc,
   type Firestore,
 } from "firebase/firestore";
+import { subscriptionId, type SavedSubscription } from "./push";
 import { ratingId, type Store } from "./store";
 import type { Batch, Listing, Profile, Rater, Rating } from "./types";
 import { RATERS } from "./types";
@@ -82,6 +84,21 @@ export class FirebaseApp {
     } catch {
       return null;
     }
+  }
+
+  /** Stores this browser's push subscription so the notify function can reach it. */
+  async savePushSubscription(rater: Rater, sub: SavedSubscription) {
+    await setDoc(doc(this.db, "pushSubscriptions", await subscriptionId(rater, sub.endpoint)), {
+      rater,
+      endpoint: sub.endpoint,
+      keys: sub.keys,
+      userAgent: navigator.userAgent.slice(0, 300),
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  async deletePushSubscription(rater: Rater, endpoint: string) {
+    await deleteDoc(doc(this.db, "pushSubscriptions", await subscriptionId(rater, endpoint)));
   }
 
   private store(): Store {

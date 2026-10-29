@@ -4,6 +4,8 @@ import type { FirebaseOptions } from "firebase/app";
 import type { User } from "firebase/auth";
 import { FirebaseApp, type Session } from "./lib/firestoreStore";
 import { RATER_NAME } from "./lib/types";
+import { appConfig } from "./lib/config";
+import { PushButton } from "./views/PushButton";
 import { Review } from "./views/Review";
 
 export default function Production({ options }: { options: FirebaseOptions }) {
@@ -11,6 +13,7 @@ export default function Production({ options }: { options: FirebaseOptions }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const vapidPublicKey = useMemo(() => appConfig().vapidPublicKey, []);
 
   useEffect(() => fb.onUser(setUser), [fb]);
   useEffect(() => {
@@ -57,6 +60,7 @@ export default function Production({ options }: { options: FirebaseOptions }) {
       who={
         <div className="seg">
           <span>{RATER_NAME[session.rater]}</span>
+          {vapidPublicKey && <PushButton fb={fb} rater={session.rater} vapidPublicKey={vapidPublicKey} />}
           <button onClick={() => fb.signOut()}>Abmelden</button>
         </div>
       }

@@ -27,9 +27,11 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;letter
 /* top bar */
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:12px 14px;display:grid;gap:12px}
 .toprow{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);letter-spacing:-.01em}
-.seg{display:inline-flex;gap:14px}
+.seg{display:inline-flex;gap:14px;position:relative;align-items:center}
 .seg button{font-size:13px;color:var(--muted);padding:2px 0;font-weight:500}
 .seg button[aria-pressed="true"]{color:var(--fg)}
+.pushnote{position:absolute;right:0;top:calc(100% + 8px);width:min(260px,80vw);z-index:20;background:var(--card);color:var(--fg);
+  border:1px solid var(--hair);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.35;box-shadow:0 8px 24px rgba(0,0,0,.12);cursor:pointer}
 .line{height:2px;background:var(--fill-2);border-radius:2px;overflow:hidden}
 .line i{display:block;height:100%;background:var(--fg);border-radius:2px;transition:width .5s var(--ease)}
 .num{font-variant-numeric:tabular-nums}
