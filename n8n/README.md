@@ -2,7 +2,7 @@
 
 | Workflow | Wann | Was |
 |---|---|---|
-| `london-ingest.json` | alle 15 Min. | Suchalerts → Inserate mit Schulweg und Prognose in Firestore (Spec §5.3) |
+| `london-ingest.json` | alle 3 Stunden (Jagdphase: alle 15 Min.) | Suchalerts → Inserate mit Schulweg und Prognose in Firestore (Spec §5.3) |
 | `london-weekly.json` | sonntags 18:00 | Wochenstapel, „Review bereit“, Kennzahlen, Phase-2-Prüfung, Profil-Update (Spec §5.3, §6.2–6.4) |
 
 Beide JSON-Dateien werden **generiert**: Die Logik der Code-Nodes liegt getestet in `src/`, die Workflows sind in `build/` beschrieben, `build.mjs` setzt beides zusammen. Änderungen also in `src/` oder `build/` machen, dann `npm run build`, und den Workflow in n8n neu importieren.
@@ -18,7 +18,7 @@ npm run build     # schreibt london-ingest.json und london-weekly.json
 
 | Spec | Node(s) | Was passiert |
 |---|---|---|
-| 1 | Every 15 minutes, List mails, Pick new mails, Get mail | alle 15 Min. das AgentMail-Postfach `london@agentmail.to` abfragen (Mails der letzten 7 Tage ohne Label `london-processed`) und jede neue Mail vollständig abrufen. Gibt es nichts Neues, endet der Lauf hier, ohne Firestore oder Gemini zu berühren |
+| 1 | Every 3 hours, List mails, Pick new mails, Get mail | alle 3 Stunden das AgentMail-Postfach `london@agentmail.to` abfragen (Mails der letzten 7 Tage ohne Label `london-processed`) und jede neue Mail vollständig abrufen. Gibt es nichts Neues, endet der Lauf hier, ohne Firestore oder Gemini zu berühren |
 | – | Settings, Load profile, Fetch context, Context | einmal pro Lauf: `config/criteria`, neuestes `profiles`-Dokument, Few-Shot-Inserate mit beiden Bewertungen |
 | 2–3 | Parse alert mails | Portal am Absender erkennen (Rightmove, Zoopla, OpenRent, OnTheMarket), Inserate an den Links erkennen (auch hinter Tracking-Links), Preis, Zimmer, Adresse, Mietform usw. per Muster lesen |
 | 4 | Needs Gemini? → Gemini extract | nur wenn der Parser nichts oder Unvollständiges findet, und immer bei Agentur-Mails. Gemini liefert festes JSON (Structured Output). Scheitert der Aufruf, bleiben die vollständig geparsten Inserate erhalten und der Fehler steht in der Ausführung |
@@ -65,6 +65,7 @@ Ein zweiter Lauf in derselben Woche baut keinen zweiten Stapel und rechnet kein 
 4. In Firestore `config/criteria` anlegen, mindestens `{ "phase": "calibrate" }`. Sobald die offenen Punkte 1–3 entschieden sind: `maxPriceMonthly`, `minBeds`, `maxCommuteMin`. Ab Phase 2 `phase` auf `"hunt"` setzen.
 5. Im Node **Settings** steht `agentmailInbox: "london@agentmail.to"`. Das Postfach ist nur für die Suche da: Jede Mail, die nicht von Rightmove, Zoopla oder OpenRent kommt, gilt als Agentur-Mail und geht an Gemini. Bestätigungsmails der Portale („Alert bestätigen“) einmal in der AgentMail-Konsole öffnen und den Link klicken; der Workflow findet darin keine Inserate und markiert sie nur. AgentMail filtert Spam: Die Liste schließt Spam aus, also in den ersten Tagen in der Konsole prüfen, ob Portal-Mails dort landen.
 6. Beide Workflows aktivieren.
+7. Für die Jagdphase (Spec §3) das Intervall in `build/ingest.mjs` auf 15 Minuten stellen (Kommentar am Trigger), neu bauen und importieren. Solange kalibriert wird, reichen 3 Stunden: Gemini kostet pro neuem Inserat, nicht pro Lauf, und das 7-Tage-Fenster holt verpasste Läufe nach.
 
 ## Gemini
 

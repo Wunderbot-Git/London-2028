@@ -3,7 +3,7 @@
   "nodes": [
     {
       "id": "n1",
-      "name": "Every 15 minutes",
+      "name": "Every 3 hours",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -14,8 +14,8 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 15
+              "field": "hours",
+              "hoursInterval": 3
             }
           ]
         }
@@ -994,7 +994,7 @@
     }
   ],
   "connections": {
-    "Every 15 minutes": {
+    "Every 3 hours": {
       "main": [
         [
           {

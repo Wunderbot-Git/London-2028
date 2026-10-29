@@ -18,8 +18,10 @@ export function ingest() {
   // ---------------------------------------------------------------------------------------------
   // 1 · Poll the inbox; stop early when nothing is new
 
-  const trigger = node("Every 15 minutes", "n8n-nodes-base.scheduleTrigger", 1.2, {
-    rule: { interval: [{ field: "minutes", minutesInterval: 15 }] },
+  // Every 3 hours while calibrating; for the hunt phase (spec §3) every 15 minutes:
+  // { field: "minutes", minutesInterval: 15 }. The 7-day window catches up on missed runs.
+  const trigger = node("Every 3 hours", "n8n-nodes-base.scheduleTrigger", 1.2, {
+    rule: { interval: [{ field: "hours", hoursInterval: 3 }] },
   });
 
   const settings = node(
@@ -488,7 +490,7 @@ export function ingest() {
   // Layout: left to right along the main path, branches below.
 
   const layout = {
-    "Every 15 minutes": [0, 0], Settings: [220, 0], "List mails": [440, 0], "Pick new mails": [660, 0], "Get mail": [880, 0],
+    "Every 3 hours": [0, 0], Settings: [220, 0], "List mails": [440, 0], "Pick new mails": [660, 0], "Get mail": [880, 0],
     "Pick processed mails": [1980, 480], "Mark mails processed": [2200, 480], "Load profile": [1100, 0], "Plan context fetch": [1320, 0],
     "Fetch context": [1540, 0], Context: [1760, 0], "Parse alert mails": [1980, 0], "Needs Gemini?": [2200, 0],
     "Build extraction request": [2420, -160], "Gemini extract": [2640, -160], "Read extraction": [2860, -160],

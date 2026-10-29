@@ -49,7 +49,7 @@ const mock = await startMock({
 
 const wf = loadWorkflow("london-ingest.json", mock.url);
 replaceWithProbe(wf, "Notify (channel open)", mock.url, "/notify");
-startManually(wf, "Settings", { removeTrigger: "Every 15 minutes" });
+startManually(wf, "Settings", { removeTrigger: "Every 3 hours" });
 const run = n8nHome();
 
 try {

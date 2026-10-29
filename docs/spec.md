@@ -96,7 +96,7 @@ Gebiete nach Priorität: **Petersham, Ham** (zu Fuß) → **Richmond** (Bus 65/3
 
 | # | Node | Aufgabe |
 |---|---|---|
-| 1 | Abfrage des AgentMail-Postfachs (alle 15 Min.) | neue, noch nicht verarbeitete Mails |
+| 1 | Abfrage des AgentMail-Postfachs (alle 3 Stunden beim Kalibrieren, alle 15 Min. in der Jagdphase) | neue, noch nicht verarbeitete Mails |
 | 2 | Router nach Absender | ein Zweig pro Portal |
 | 3 | Parser (Code-Node je Portal) | Inserate aus dem Mail-HTML ziehen: URL, Quelle, Quell-ID, Titel/Adresse, Postcode, Preis, Zimmer, Bild-URL, Schlagworte |
 | 4 | LLM-Fallback | wenn der Parser scheitert oder Felder fehlen: Extraktion per Gemini in festes JSON-Schema |
